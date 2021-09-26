@@ -11,12 +11,14 @@
 // @match        https://*.south-plus.net/*
 // @match        https://*.north-plus.net/*
 // @match        https://*.snow-plus.net/*
+// @match        https://*.level-plus.net/*
 // @match        https://spring-plus.net/*
 // @match        https://summer-plus.net/*
 // @match        https://soul-plus.net/*
 // @match        https://south-plus.net/*
 // @match        https://north-plus.net/*
 // @match        https://snow-plus.net/*
+// @match        https://level-plus.net/*
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_listValues
