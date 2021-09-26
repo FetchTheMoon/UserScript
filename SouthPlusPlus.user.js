@@ -14,6 +14,7 @@
 // @match        https://*.snow-plus.net/*
 // @match        https://*.level-plus.net/*
 // @match        https://*.white-plus.net/*
+// @match        https://*.imoutolove.me/*
 // --------------------------------------------
 // @match        https://spring-plus.net/*
 // @match        https://summer-plus.net/*
@@ -23,6 +24,7 @@
 // @match        https://snow-plus.net/*
 // @match        https://level-plus.net/*
 // @match        https://white-plus.net/*
+// @match        https://imoutolove.me/*
 // --------------------------------------------
 // @grant        GM_getValue
 // @grant        GM_setValue
