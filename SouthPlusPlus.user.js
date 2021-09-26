@@ -5,6 +5,7 @@
 // @description  魂+论坛功能加强
 // @run-at       document-end
 // @author       镜花水中捞月
+// --------------------------------------------
 // @match        https://*.spring-plus.net/*
 // @match        https://*.summer-plus.net/*
 // @match        https://*.soul-plus.net/*
@@ -12,6 +13,8 @@
 // @match        https://*.north-plus.net/*
 // @match        https://*.snow-plus.net/*
 // @match        https://*.level-plus.net/*
+// @match        https://*.white-plus.net/*
+// --------------------------------------------
 // @match        https://spring-plus.net/*
 // @match        https://summer-plus.net/*
 // @match        https://soul-plus.net/*
@@ -19,6 +22,8 @@
 // @match        https://north-plus.net/*
 // @match        https://snow-plus.net/*
 // @match        https://level-plus.net/*
+// @match        https://white-plus.net/*
+// --------------------------------------------
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_listValues
