@@ -1,3 +1,23 @@
+// ==UserScript==
+// @name         Soul++
+// @namespace    SoulPlusPlus
+// @version      0.1
+// @description  魂+论坛功能加强
+// @run-at       document-end
+// @author       镜花水中捞月
+// @match        https://bbs.spring-plus.net/*
+// @match        https://bbs.summer-plus.net/*
+// @match        https://bbs.soul-plus.net/*
+// @match        https://bbs.south-plus.net/*
+// @match        https://bbs.north-plus.net/*
+// @match        https://bbs.snow-plus.net/* 
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_listValues
+// @grant        GM_registerMenuCommand
+// @grant        GM_unregisterMenuCommand
+// @license      GPL-3.0 License 
+// ==/UserScript==
 if (window.location.href.indexOf("read.php") > -1) {
     let buyButtons = document.querySelectorAll(".quote.jumbotron>.btn.btn-danger")
     buyButtons.forEach(button => {
