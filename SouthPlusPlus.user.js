@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            Soul++
 // @namespace       SoulPlusPlus
-// @version         0.3
+// @version         0.3a
 // @description     让魂+论坛变得更好用一些
 // @run-at          document-start
 // @author          镜花水中捞月
@@ -45,12 +45,7 @@
 // ==/UserScript==
 
 
-//##############################################################
-// 调试代码
-//##############################################################
-// GM_listValues().forEach(vName => {console.log(vName);GM_deleteValue(vName);});
-// return;
-// console.log(GM_listValues());
+
 
 //##############################################################
 // 注册选项
@@ -536,6 +531,14 @@ function automaticTaskCollection() {
             return
         }
 
+        //##############################################################
+        // 调试代码
+        //##############################################################
+        // GM_listValues().forEach(vName => {console.log(vName);GM_deleteValue(vName);});
+        // console.log(GM_listValues());
+        // return;
+        //##############################################################
+
         if (GM_getValue("loadingBoughtPostWithoutRefresh") && document.location.href.indexOf("/read.php") > -1) {
             loadingBoughtPostWithoutRefresh();
         }
@@ -551,8 +554,10 @@ function automaticTaskCollection() {
         if (GM_getValue("dynamicLoadingPosts") && document.location.href.indexOf("/read.php") > -1) {
             dynamicLoadingNextPage("post");
         }
+
+
         if (GM_getValue("automaticTaskCollection")
-            && (new Date().getTime()) - parseInt(GM_getValue("LastAutomaticTaskCollectionDate")) > (18 * 3600 * 1000)
+            && (new Date().getTime()) - (parseInt(GM_getValue("LastAutomaticTaskCollectionDate")) || 0) > (18 * 3600 * 1000)
         ) {
             automaticTaskCollection();
         }
