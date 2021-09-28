@@ -19,6 +19,6 @@
 
 2. 通过以下链接安装脚本
     - [~~在GreasyFork页面安装脚本(被无聊的人举报了，暂时不可用)~~](https://greasyfork.org/zh-CN/scripts/432987-soul)
-    - [在SleazyFork页面安装脚本](https://sleazyfork.org/zh-CN/scripts/433106-soul)
+    - [~~在SleazyFork页面安装脚本(被无聊的人举报了，暂时不可用)~~](https://sleazyfork.org/zh-CN/scripts/433106-soul)
     - [在备用地址安装脚本](https://cdn.jsdelivr.net/gh/FetchTheMoon/UserScript/SouthPlusPlus.user.js)
 
