@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            Soul++
 // @namespace       SoulPlusPlus
-// @version         0.2
+// @version         0.3
 // @description     让魂+论坛变得更好用一些
 // @run-at          document-start
 // @author          镜花水中捞月
@@ -64,6 +64,11 @@ let menu = [
         defaultValue: true
     },
     {
+        key: "automaticTaskCollection",
+        title: "自动领取并完成论坛任务",
+        defaultValue: true
+    },
+    {
         key: "dynamicLoadingThreads",
         title: "无缝加载下一页的帖子"
     },
@@ -111,6 +116,7 @@ class MenuSwitchOption {
         GM_unregisterMenuCommand(this.optionId);
     }
 }
+
 
 function registerAllOptions() {
     menu.forEach((item) => {
@@ -187,7 +193,7 @@ function loadingBoughtPostWithoutRefresh() {
     });
 }
 
-function hidePostImage(target=document) {
+function hidePostImage(target = document) {
     let thread_user_post_images = target.querySelectorAll(".t5.t2 .r_one img");
 
     thread_user_post_images.forEach(img => {
@@ -280,7 +286,7 @@ function hidePostImage(target=document) {
     });
 }
 
-function hideUserAvatar(target=document) {
+function hideUserAvatar(target = document) {
     let user_avatars = target.querySelectorAll(".user-pic img");
     user_avatars.forEach((avatar) => {
         let src = avatar.getAttribute("src");
@@ -326,75 +332,129 @@ function hideUserAvatar(target=document) {
     });
 }
 
-function dynamicLoadingThreads() {
+function dynamicLoadingNextPage(pageType) {
 
 
-    function loadNextPage() {
-        // 通过翻页html元素来获得当前的页码和最大页码，之后会主动更新这一部分
-        let result = document.querySelector(".pagesone").innerText.match(/Pages: (\d+)\/(\d+)/);
-        let currentPageNum = parseInt(result[1]);
-        let maxPageNum = parseInt(result[2]);
-        console.log(`页数：${currentPageNum}/${maxPageNum}`);
+    function fetchNextPage(url) {
 
-        // 到最后一页了显然就不需要再加载什么了，也不需要将isLoading重置
-        if (currentPageNum >= maxPageNum) return
+        console.log(`提前载入${url}`);
+        let dummy = document.createElement("html");
+        return fetch(url, {credentials: 'include', mode: "no-cors"})
+            .then(response => response.text())
+            .then(html => {
+                dummy.innerHTML = html;
+                return dummy
+            })
+            .catch(err => console.error(err))
 
-        // fid可以通过全局变量获得
-        let url = `/thread.php?fid-${fid}-page-${currentPageNum + 1}.html`;
-        console.log(`loading ${url}`);
-        // 将地址栏也改变了，这样阅读了帖子倒退回来之后进度不会变
-        window.history.pushState({}, 0, url);
+    }
 
-        // fetch获得下一页的内容，然后填充到这一页帖子列表底部
-        try {
-            fetch(url,
-                {
-                    credentials: 'include',
-                    mode: "no-cors"
-                }).then(resp => resp.text())
-                .then(html => {
-                        // fetch得到的新页面填入dummy备用（嗯？感觉在做菜
-                        let dummy = document.createElement("html");
-                        dummy.innerHTML = html;
+    function loadThreadsNextPage(dummy) {
 
-                        // 新同学DocumentFragment，相当于一个空白的document
-                        // 可以先把下一页的帖子列表先全部扔到这里面
-                        let threadsFragment = document.createDocumentFragment();
-                        dummy.querySelectorAll(".tr3.t_one").forEach(ele => threadsFragment.appendChild(ele));
+        // 可以先把下一页的帖子列表先全部扔到这里面
+        let threadsFragment = document.createDocumentFragment();
+        dummy.querySelectorAll(".tr3.t_one").forEach(ele => threadsFragment.appendChild(ele));
 
-                        // 获得本页面最后一个帖子
-                        let currentPageThreads = document.querySelectorAll(".tr3.t_one");
-                        let currentPageLastThread = currentPageThreads[currentPageThreads.length - 1];
-                        // 追加下一页的所有帖子到当前页最后一个帖子的下方
-                        currentPageLastThread.parentNode.appendChild(threadsFragment);
+        // 获得本页面最后一个帖子
+        let currentPageThreads = document.querySelectorAll(".tr3.t_one");
+        let currentPageLastThread = currentPageThreads[currentPageThreads.length - 1];
+        // 追加下一页的所有帖子到当前页最后一个帖子的下方
+        currentPageLastThread.parentNode.appendChild(threadsFragment);
 
-                        // 主动更新帖子列表上下方的当前页码数
-                        let pagesOld = document.querySelectorAll(".pages");
-                        let pagesNew = dummy.querySelectorAll(".pages");
-                        for (let i = 0; i < pagesOld.length; i++) {
-                            pagesOld[i].parentNode.replaceChild(pagesNew[i], pagesOld[i]);
-                        }
-
-                    }
-                    // 无论fetch的promise结果是fulfilled或者是rejected，都会执行isLoading=false，允许下一次拉到底部加载
-                ).finally(() => isLoading = false)
-        } catch (error) {
-            alert(`发送请求出错！\n${error}`);
-            console.log('Request Failed', error);
+        // 主动更新帖子列表上下方的当前页码数
+        let pagesOld = document.querySelectorAll(".pages");
+        let pagesNew = dummy.querySelectorAll(".pages");
+        for (let i = 0; i < pagesOld.length; i++) {
+            pagesOld[i].parentNode.replaceChild(pagesNew[i], pagesOld[i]);
         }
     }
 
-    // 防止在页面底部一直滚动会连续加载好几页
-    let isLoading;
-    document.addEventListener('wheel', (e) => {
-        if (
-            e.deltaY > 0
-            && Math.abs(document.documentElement.scrollHeight - (window.pageYOffset + window.innerHeight)) < 20
-            && !isLoading
-        ) {
-            isLoading = true;
-            loadNextPage();
+    function loadPostsNextPage(dummy) {
 
+        if (GM_getValue("hidePostImage")) {
+            hidePostImage(dummy);
+        }
+        if (GM_getValue("hideUserAvatar")) {
+            hideUserAvatar(dummy);
+        }
+
+        // 新同学DocumentFragment，相当于一个空白的document
+        // 可以先把下一页的帖子列表先全部扔到这里面
+        let postsFragment = document.createDocumentFragment();
+        dummy.querySelectorAll(".t5.t2").forEach(ele => postsFragment.appendChild(ele));
+
+        // 获得本页面最后一个帖子
+        let currentPagePosts = document.querySelectorAll(".t5.t2");
+
+        // 追加下一页的所有帖子到当前页最后一个帖子的下方
+        currentPagePosts[currentPagePosts.length - 1].parentNode.appendChild(postsFragment);
+
+        // 主动更新帖子列表上下方的当前页码数
+        let pagesOld = document.querySelectorAll(".pages");
+        let pagesNew = dummy.querySelectorAll(".pages");
+        for (let i = 0; i < pagesOld.length; i++) {
+            pagesOld[i].parentNode.replaceChild(pagesNew[i], pagesOld[i]);
+        }
+        // 得给它更新一下。。不然下一次就得不到正确的值了。
+        page += 1
+    }
+
+    function getThreadsNextPageUrl() {
+        // 帖子列表只能通过html元素来获得最大页数，再无缝翻页后，需要主动更新这一部分的html
+        let result = document.querySelector(".pagesone").innerText.match(/Pages: (\d+)\/(\d+)/);
+        let currentPageNum = parseInt(result[1]);
+        let maxPageNum = parseInt(result[2]);
+        console.log(`当前帖子列表页数：${currentPageNum}/${maxPageNum}`);
+
+        // 到最后一页了显然就不需要再加载什么了
+        if (currentPageNum >= maxPageNum) return
+
+        // fid可以通过全局变量获得
+        return `/thread.php?fid-${fid}-page-${currentPageNum + 1}.html`;
+    }
+
+    function getPostsNextPageUrl() {
+        // 帖子内就舒服多了，可以通过全局变量page和totalpage来获得当前页和最大页
+        let currentPageNum = page;
+        let maxPageNum = totalpage;
+
+        console.log(`当前页：${currentPageNum}/${maxPageNum}`);
+        // 到最后一页了显然就不需要再加载什么了
+        if (currentPageNum >= maxPageNum) return
+
+        // tid可以通过全局变量获得
+        return `/read.php?tid-${tid}-fpage-0-toread--page-${currentPageNum + 1}.html`;
+    }
+
+    // 防止在页面底部一直滚动会连续加载好几页
+    let isFetching;
+    let nextPageURL;
+    let nextPageDummy;
+    document.addEventListener('wheel', (e) => {
+        // 如果是往上滚动，或者正在后台加载页面，则直接返回了
+        if (e.deltaY <= 0 || isFetching) {
+            return;
+        }
+        // 没有加载下一页的话先加载
+        if (!nextPageDummy) {
+            if (pageType === "thread") nextPageURL = getThreadsNextPageUrl();
+            else if (pageType === "post") nextPageURL = getPostsNextPageUrl();
+            // 没有下一页链接说明到最后一页了
+            if (!nextPageURL) return;
+            isFetching = true;
+            fetchNextPage(nextPageURL)
+                .then(dummy => {
+                    nextPageDummy = dummy;
+                })
+                .catch(err => console.error(err))
+                .finally(() => isFetching = false);
+        }
+        // 否则判断一下是否到底了，到底了就追加下一页的内容
+        else if (Math.abs(document.documentElement.scrollHeight - (window.pageYOffset + window.innerHeight)) < 20) {
+            if (pageType === "thread") loadThreadsNextPage(nextPageDummy);
+            else if (pageType === "post") loadPostsNextPage(nextPageDummy);
+            nextPageDummy = null;
+            window.history.pushState({}, 0, nextPageURL); // 将地址栏也改变了
         }
 
     })
@@ -402,85 +462,57 @@ function dynamicLoadingThreads() {
 
 }
 
-function dynamicLoadingPosts() {
+function automaticTaskCollection() {
 
-    // （DO NOT REPEAT YOURSELF啊
-    // （没办法，人菜瘾大，以后重构再说吧
-    function loadNextPage() {
-        // 帖子内就舒服多了，可以通过page和totalpage来获得当前页和最大页
-        let currentPageNum = page;
-        let maxPageNum = totalpage;
-        console.log(`页数：${currentPageNum}/${maxPageNum}`);
+    async function forumTask(pageURL, selector, jobType) {
+        let dummy = await fetch(
+            pageURL,
+            {credentials: 'include', mode: "no-cors"})
+            .then(response => response.text())
+            .then(html => {
+                let dummy = document.createElement("html");
+                dummy.innerHTML = html;
+                return dummy
+            })
+            .catch(err => console.error(err));
 
-        // 到最后一页了显然就不需要再加载什么了，也不需要将isLoading重置
-        if (currentPageNum >= maxPageNum) return
+        async function t(task) {
+            let job = task.getAttribute("onclick");
+            let r = job.match(/startjob\('(\d+)'\);/);
+            let jobID = r[1];
+            let taskURL = `/plugin.php?H_name=tasks&action=ajax&actions=${jobType}&cid=${jobID}&nowtime=${new Date().getTime()}&verify=${verifyhash}`;
 
-        // tid可以通过全局变量获得
-        let url = `/read.php?tid-${tid}-fpage-0-toread--page-${currentPageNum + 1}.html`;
 
-        console.log(`loading ${url}`);
-        // 将地址栏也改变了
-        window.history.pushState({}, 0, url);
-
-        // fetch获得下一页的内容，然后填充到这一页帖子列表底部
-        try {
-            fetch(url,
-                {
-                    credentials: 'include',
-                    mode: "no-cors"
-                }).then(resp => resp.text())
+            await fetch(taskURL, {credentials: 'include', mode: "no-cors"})
+                .then(response => response.text())
                 .then(html => {
-                        // fetch得到的新页面填入dummy备用（嗯？感觉在做菜
-                        let dummy = document.createElement("html");
-                        dummy.innerHTML = html;
-                        if (GM_getValue("hidePostImage")) {
-                            hidePostImage(dummy);
-                        }
-                        if (GM_getValue("hideUserAvatar")) {
-                            hideUserAvatar(dummy);
-                        }
-                        // 新同学DocumentFragment，相当于一个空白的document
-                        // 可以先把下一页的帖子列表先全部扔到这里面
-                        let postsFragment = document.createDocumentFragment();
-                        dummy.querySelectorAll(".t5.t2").forEach(ele => postsFragment.appendChild(ele));
-
-                        // 获得本页面最后一个帖子
-                        let currentPagePosts = document.querySelectorAll(".t5.t2");
-                        let currentPageLastPost = currentPagePosts[currentPagePosts.length - 1];
-                        // 追加下一页的所有帖子到当前页最后一个帖子的下方
-                        currentPageLastPost.parentNode.appendChild(postsFragment);
-
-                        // 主动更新帖子列表上下方的当前页码数
-                        let pagesOld = document.querySelectorAll(".pages");
-                        let pagesNew = dummy.querySelectorAll(".pages");
-                        for (let i = 0; i < pagesOld.length; i++) {
-                            pagesOld[i].parentNode.replaceChild(pagesNew[i], pagesOld[i]);
-                        }
-                        // 得给它更新一下。。不然下一次就得不到正确的值了。
-                        window.page = currentPageNum + 1
+                        console.log(html);
+                        if (html.indexOf("success\t") > -1) alert(html.match(/!\[CDATA\[success\t(.+)]]>/)[1]);
                     }
-                    // 无论fetch的promise结果是fulfilled或者是rejected，都会执行isLoading=false，允许下一次拉到底部加载
-                ).finally(() => isLoading = false)
-        } catch (error) {
-            alert(`发送请求出错！\n${error}`);
-            console.log('Request Failed', error);
+                )
+                .catch(err => console.error(err));
         }
+
+        dummy.querySelectorAll(selector).forEach(t);
+
+
     }
 
-    // 防止在页面底部一直滚动会连续加载好几页
-    let isLoading;
-    document.addEventListener('wheel', (e) => {
-        if (
-            e.deltaY > 0
-            && Math.abs(document.documentElement.scrollHeight - (window.pageYOffset + window.innerHeight)) < 20
-            && !isLoading
-        ) {
-            isLoading = true;
-            loadNextPage();
+    for (let i = 0; i < 2; i++) {
+        forumTask(
+            "/plugin.php?H_name-tasks.html",
+            "a[title=按这申请此任务]",
+            "job"
+        ).catch(err => console.error(err));
 
-        }
-
-    })
+        forumTask(
+            "/plugin.php?H_name-tasks-actions-newtasks.html.html",
+            "a[title=领取此奖励]",
+            "job2"
+        ).catch(err => console.error(err));
+    }
+    console.log(`本次领取时间:${new Date().getTime()}`);
+    GM_setValue("LastAutomaticTaskCollectionDate", new Date().getTime());
 
 
 }
@@ -507,18 +539,25 @@ function dynamicLoadingPosts() {
         if (GM_getValue("loadingBoughtPostWithoutRefresh") && document.location.href.indexOf("read.php") > -1) {
             loadingBoughtPostWithoutRefresh();
         }
-        if (GM_getValue("hidePostImage") && document.location.href.indexOf("read.php") > -1) {
+        if (GM_getValue("hidePostImage") && document.location.href.indexOf("/read.php") > -1) {
             hidePostImage();
         }
-        if (GM_getValue("hideUserAvatar") && document.location.href.indexOf("read.php") > -1) {
+        if (GM_getValue("hideUserAvatar") && document.location.href.indexOf("/read.php") > -1) {
             hideUserAvatar();
         }
-        if (GM_getValue("dynamicLoadingThreads") && document.location.href.indexOf("thread.php") > -1) {
-            dynamicLoadingThreads();
+        if (GM_getValue("dynamicLoadingThreads") && document.location.href.indexOf("/thread.php") > -1) {
+            dynamicLoadingNextPage("thread");
         }
-        if (GM_getValue("dynamicLoadingPosts") && document.location.href.indexOf("read.php") > -1) {
-            dynamicLoadingPosts();
+        if (GM_getValue("dynamicLoadingPosts") && document.location.href.indexOf("/read.php") > -1) {
+            dynamicLoadingNextPage("post");
         }
+        if (GM_getValue("automaticTaskCollection")
+            && (new Date().getTime()) - parseInt(GM_getValue("LastAutomaticTaskCollectionDate")) > (18 * 3600 * 1000)
+        ) {
+            automaticTaskCollection();
+        }
+
+
     }
 })()
 
