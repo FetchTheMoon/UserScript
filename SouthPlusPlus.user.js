@@ -521,7 +521,7 @@ function automaticTaskCollection() {
 // 执行入口
 //##############################################################
 (function () {
-    let mainInterval = setInterval(main, 10);
+    let mainInterval = setInterval(main, 50);
     let mainStart = (new Date()).getTime();
 
     function main() {
@@ -536,7 +536,7 @@ function automaticTaskCollection() {
             return
         }
 
-        if (GM_getValue("loadingBoughtPostWithoutRefresh") && document.location.href.indexOf("read.php") > -1) {
+        if (GM_getValue("loadingBoughtPostWithoutRefresh") && document.location.href.indexOf("/read.php") > -1) {
             loadingBoughtPostWithoutRefresh();
         }
         if (GM_getValue("hidePostImage") && document.location.href.indexOf("/read.php") > -1) {
