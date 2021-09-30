@@ -1,14 +1,12 @@
 // ==UserScript==
 // @name            Soul++
 // @namespace       SoulPlusPlus
-// @version         0.3a
+// @version         0.4
 // @description     让魂+论坛变得更好用一些
 // @run-at          document-start
 // @author          镜花水中捞月
 // @homepage        https://github.com/FetchTheMoon
 // @icon64          https://cdn.jsdelivr.net/gh/FetchTheMoon/UserScript/LOGO.png
-// @updateURL       https://cdn.jsdelivr.net/gh/FetchTheMoon/UserScript/SouthPlusPlus.user.js
-// @downloadURL     https://cdn.jsdelivr.net/gh/FetchTheMoon/UserScript/SouthPlusPlus.user.js
 // @supportURL      https://github.com/FetchTheMoon/UserScript/issues
 // --------------------------------------------
 // @match           https://*.spring-plus.net/*
@@ -45,8 +43,6 @@
 // ==/UserScript==
 
 
-
-
 //##############################################################
 // 注册选项
 //##############################################################
@@ -80,6 +76,7 @@ let menu = [
         title: "(sfw)安全模式 - 替换用户头像为默认"
     },
 ];
+
 
 class MenuSwitchOption {
     constructor(key, optionName, defaultValue) {
@@ -122,6 +119,10 @@ function registerAllOptions() {
 }
 
 registerAllOptions();
+
+function getElementByXpath(from, xpath) {
+    return from.evaluate(xpath, from, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+}
 
 //##############################################################
 // 功能
@@ -192,92 +193,86 @@ function hidePostImage(target = document) {
     let thread_user_post_images = target.querySelectorAll(".t5.t2 .r_one img");
 
     thread_user_post_images.forEach(img => {
+        // 避免折叠论坛表情
         const emojiPathReg = /images\/post\/smile\//;
-        if (!img.getAttribute("src").match(emojiPathReg)) {
-            // 避免重复处理
-            let p = img.parentNode;
-            if (p.getAttribute("class") === "spp-img-mask") return;
-
-            // 创建包裹元素
-            let wrapper = document.createElement('div');
-            wrapper.setAttribute("class", "spp-img-mask");
-            wrapper.style.display = "grid";
-            wrapper.style.gridTemplateColumns = "auto";
-
-            // 将父元素下的图片元素替换成包裹元素
-            img.parentNode.replaceChild(wrapper, img);
-
-            // 将图片元素当成子元素放入包裹元素
-            wrapper.appendChild(img);
-
-            // 隐藏图片
-            img.style.display = "none";
-            img.style.textAlign = "center";
-
-            // 添加类名
-            img.setAttribute("class", "spp-thread-imgs");
-
-            // 包裹元素样式
-            wrapper.style.borderStyle = "dashed";
-            wrapper.style.width = "auto";
-            wrapper.style.height = "20";
-            wrapper.style.textAlign = "center";
-            wrapper.style.verticalAlign = "center";
-
-            // 创建遮罩小人儿表情
-            let icon_hide = document.createElement("img");
-            icon_hide.setAttribute("src", "images/post/smile/smallface/face106.gif");
-
-            let icon_show = document.createElement("img");
-            icon_show.setAttribute("src", "images/post/smile/smallface/face109.gif");
-            icon_show.style.display = "none";
-
-            // 创建遮罩文本
-            let tip = document.createElement("span");
-            let tip_text = document.createElement("span");
-            tip_text.innerText = "看看是啥";
-
-            // 凑一堆儿来
-            tip.appendChild(icon_hide);
-            tip.appendChild(icon_show);
-            tip.appendChild(tip_text);
-
-            // 添加类名
-            icon_hide.setAttribute("class", "spp-img-mask-icon-hide");
-            icon_show.setAttribute("class", "spp-img-mask-icon-show");
-            tip.setAttribute("class", "ssp-img-mask-text");
-
-            // 插入元素
-            wrapper.insertBefore(tip, img);
-
-            // 事件监听
-            wrapper.addEventListener("mouseenter", (e) => {
-                // let rect = e.target.getBoundingClientRect();
-                // console.log(`鼠标坐标: ${e.x},${e.y}`);
-                // console.log(`元素矩阵: l:${rect.left},t:${rect.top},r:${rect.right},b:${rect.bottom}`);
-                // console.log(`判定结果: ${(
-                //     e.x > rect.left + rect.width * 0.9
-                //     && e.x < rect.right
-                //     && e.y > rect.top
-                //     && e.y < rect.bottom)}`);
-                // if (!(
-                //     e.x > rect.left + rect.width * 0.9
-                //     && e.x < rect.right
-                //     && e.y > rect.top
-                //     && e.y < rect.bottom )) {
-                //     return;
-                // }
-                e.target.querySelector(".spp-thread-imgs").style.display = "";
-                e.target.querySelector(".spp-img-mask-icon-hide").style.display = "none";
-                e.target.querySelector(".spp-img-mask-icon-show").style.display = "";
-            });
-            wrapper.addEventListener("mouseleave", (e) => {
-                e.target.querySelector(".spp-thread-imgs").style.display = "none";
-                e.target.querySelector(".spp-img-mask-icon-hide").style.display = "";
-                e.target.querySelector(".spp-img-mask-icon-show").style.display = "none";
-            });
-
+        if (img.getAttribute("src").match(emojiPathReg)) {
+            return
         }
+        // 避免折叠论坛自带的文件图标
+        const fileIconPathReg = /images\/colorImagination\/file\//;
+        if (img.getAttribute("src").match(fileIconPathReg)) {
+            return
+        }
+
+        // 避免重复处理
+        let p = img.parentNode;
+        if (p.getAttribute("class") === "spp-img-mask") return;
+
+        // 创建包裹元素
+        let wrapper = document.createElement('div');
+        wrapper.setAttribute("class", "spp-img-mask");
+        wrapper.style.display = "grid";
+        wrapper.style.gridTemplateColumns = "auto";
+
+        // 将父元素下的图片元素替换成包裹元素
+        img.parentNode.replaceChild(wrapper, img);
+
+        // 将图片元素当成子元素放入包裹元素
+        wrapper.appendChild(img);
+
+        // 隐藏图片
+        img.style.display = "none";
+        img.style.textAlign = "center";
+
+        // 添加类名
+        img.setAttribute("class", "spp-thread-imgs");
+
+        // 包裹元素样式
+        wrapper.style.borderStyle = "dashed";
+        wrapper.style.width = "auto";
+        wrapper.style.height = "20";
+        wrapper.style.textAlign = "center";
+        wrapper.style.verticalAlign = "center";
+
+        // 创建遮罩小人儿表情
+        let icon_hide = document.createElement("img");
+        icon_hide.setAttribute("src", "images/post/smile/smallface/face106.gif");
+
+        let icon_show = document.createElement("img");
+        icon_show.setAttribute("src", "images/post/smile/smallface/face109.gif");
+        icon_show.style.display = "none";
+
+        // 创建遮罩文本
+        let tip = document.createElement("span");
+        let tip_text = document.createElement("span");
+        tip_text.innerText = "看看是啥";
+
+        // 凑一堆儿来
+        tip.appendChild(icon_hide);
+        tip.appendChild(icon_show);
+        tip.appendChild(tip_text);
+
+        // 添加类名
+        icon_hide.setAttribute("class", "spp-img-mask-icon-hide");
+        icon_show.setAttribute("class", "spp-img-mask-icon-show");
+        tip.setAttribute("class", "ssp-img-mask-text");
+
+        // 插入元素
+        wrapper.insertBefore(tip, img);
+
+        // 事件监听
+        wrapper.addEventListener("mouseenter", (e) => {
+            e.target.querySelector(".spp-thread-imgs").style.display = "";
+            e.target.querySelector(".spp-img-mask-icon-hide").style.display = "none";
+            e.target.querySelector(".spp-img-mask-icon-show").style.display = "";
+        });
+        wrapper.addEventListener("mouseleave", (e) => {
+            e.target.querySelector(".spp-thread-imgs").style.display = "none";
+            e.target.querySelector(".spp-img-mask-icon-hide").style.display = "";
+            e.target.querySelector(".spp-img-mask-icon-show").style.display = "none";
+        });
+
+
     });
 }
 
@@ -327,133 +322,175 @@ function hideUserAvatar(target = document) {
     });
 }
 
+const PageType = Object.freeze({
+    THREADS_PAGE: Symbol("主题列表"),
+    POSTS_PAGE: Symbol("帖子列表"),
+});
+
 function dynamicLoadingNextPage(pageType) {
 
+    class NextPageLoader {
 
-    function fetchNextPage(url) {
-
-        console.log(`提前载入${url}`);
-        let dummy = document.createElement("html");
-        return fetch(url, {credentials: 'include', mode: "no-cors"})
-            .then(response => response.text())
-            .then(html => {
-                dummy.innerHTML = html;
-                return dummy
-            })
-            .catch(err => console.error(err))
-
-    }
-
-    function loadThreadsNextPage(dummy) {
-
-        // 可以先把下一页的帖子列表先全部扔到这里面
-        let threadsFragment = document.createDocumentFragment();
-        dummy.querySelectorAll(".tr3.t_one").forEach(ele => threadsFragment.appendChild(ele));
-
-        // 获得本页面最后一个帖子
-        let currentPageThreads = document.querySelectorAll(".tr3.t_one");
-        let currentPageLastThread = currentPageThreads[currentPageThreads.length - 1];
-        // 追加下一页的所有帖子到当前页最后一个帖子的下方
-        currentPageLastThread.parentNode.appendChild(threadsFragment);
-
-        // 主动更新帖子列表上下方的当前页码数
-        let pagesOld = document.querySelectorAll(".pages");
-        let pagesNew = dummy.querySelectorAll(".pages");
-        for (let i = 0; i < pagesOld.length; i++) {
-            pagesOld[i].parentNode.replaceChild(pagesNew[i], pagesOld[i]);
-        }
-    }
-
-    function loadPostsNextPage(dummy) {
-
-        if (GM_getValue("hidePostImage")) {
-            hidePostImage(dummy);
-        }
-        if (GM_getValue("hideUserAvatar")) {
-            hideUserAvatar(dummy);
+        constructor() {
+            this.isFetching = false;
+            this.nextPageDummy = null;
         }
 
-        // 新同学DocumentFragment，相当于一个空白的document
-        // 可以先把下一页的帖子列表先全部扔到这里面
-        let postsFragment = document.createDocumentFragment();
-        dummy.querySelectorAll(".t5.t2").forEach(ele => postsFragment.appendChild(ele));
+        GetURLDummy(url) {
+            this.nextPageDummy = document.createElement("html");
+            this.isFetching = true;
+            return fetch(url, {credentials: 'include', mode: "no-cors"})
+                .then(response => response.text())
 
-        // 获得本页面最后一个帖子
-        let currentPagePosts = document.querySelectorAll(".t5.t2");
-
-        // 追加下一页的所有帖子到当前页最后一个帖子的下方
-        currentPagePosts[currentPagePosts.length - 1].parentNode.appendChild(postsFragment);
-
-        // 主动更新帖子列表上下方的当前页码数
-        let pagesOld = document.querySelectorAll(".pages");
-        let pagesNew = dummy.querySelectorAll(".pages");
-        for (let i = 0; i < pagesOld.length; i++) {
-            pagesOld[i].parentNode.replaceChild(pagesNew[i], pagesOld[i]);
         }
-        // 得给它更新一下。。不然下一次就得不到正确的值了。
-        page += 1
+
+        AppendNextPageItems(itemSelector, divider) {
+
+            let postsFragment = document.createDocumentFragment();
+            this.nextPageDummy.querySelectorAll(itemSelector).forEach(ele => postsFragment.appendChild(ele));
+            // 追加下一页的所有子项追加到分割线下面
+            divider.parentNode.appendChild(postsFragment);
+        }
+
+        UpdatePageList() {
+            // 主动更新帖子列表上下方的当前页码数
+            let pagesOld = document.querySelectorAll(".pages");
+            let pagesNew = this.nextPageDummy.querySelectorAll(".pages");
+            for (let i = 0; i < pagesOld.length; i++) {
+                pagesOld[i].parentNode.replaceChild(pagesNew[i], pagesOld[i]);
+            }
+        }
+
     }
 
-    function getThreadsNextPageUrl() {
-        // 帖子列表只能通过html元素来获得最大页数，再无缝翻页后，需要主动更新这一部分的html
-        let result = document.querySelector(".pagesone").innerText.match(/Pages: (\d+)\/(\d+)/);
-        let currentPageNum = parseInt(result[1]);
-        let maxPageNum = parseInt(result[2]);
-        console.log(`当前帖子列表页数：${currentPageNum}/${maxPageNum}`);
 
-        // 到最后一页了显然就不需要再加载什么了
-        if (currentPageNum >= maxPageNum) return
-
-        // fid可以通过全局变量获得
-        return `/thread.php?fid-${fid}-page-${currentPageNum + 1}.html`;
+    function getNextPageUrl() {
+        let url = document.querySelector(".pages b").parentNode.nextSibling.firstChild.getAttribute("href");
+        return document.URL.indexOf(url) > -1 ? null : url;
     }
 
-    function getPostsNextPageUrl() {
-        // 帖子内就舒服多了，可以通过全局变量page和totalpage来获得当前页和最大页
-        let currentPageNum = page;
-        let maxPageNum = totalpage;
 
-        console.log(`当前页：${currentPageNum}/${maxPageNum}`);
-        // 到最后一页了显然就不需要再加载什么了
-        if (currentPageNum >= maxPageNum) return
-
-        // tid可以通过全局变量获得
-        return `/read.php?tid-${tid}-fpage-0-toread--page-${currentPageNum + 1}.html`;
+    function makeDivider(itemsSelector, dividerMaker) {
+        let divider = dividerMaker();
+        let allItem = document.querySelectorAll(itemsSelector);
+        let lastItem = allItem[allItem.length - 1];
+        lastItem.parentNode.appendChild(divider);
+        return divider;
     }
 
-    // 防止在页面底部一直滚动会连续加载好几页
-    let isFetching;
+    let nextPageLoader;
     let nextPageURL;
-    let nextPageDummy;
-    document.addEventListener('wheel', (e) => {
-        // 如果是往上滚动，或者正在后台加载页面，则直接返回了
-        if (e.deltaY <= 0 || isFetching) {
-            return;
-        }
-        // 没有加载下一页的话先加载
-        if (!nextPageDummy) {
-            if (pageType === "thread") nextPageURL = getThreadsNextPageUrl();
-            else if (pageType === "post") nextPageURL = getPostsNextPageUrl();
-            // 没有下一页链接说明到最后一页了
-            if (!nextPageURL) return;
-            isFetching = true;
-            fetchNextPage(nextPageURL)
-                .then(dummy => {
-                    nextPageDummy = dummy;
-                })
-                .catch(err => console.error(err))
-                .finally(() => isFetching = false);
-        }
-        // 否则判断一下是否到底了，到底了就追加下一页的内容
-        else if (Math.abs(document.documentElement.scrollHeight - (window.pageYOffset + window.innerHeight)) < 20) {
-            if (pageType === "thread") loadThreadsNextPage(nextPageDummy);
-            else if (pageType === "post") loadPostsNextPage(nextPageDummy);
-            nextPageDummy = null;
-            window.history.pushState({}, 0, nextPageURL); // 将地址栏也改变了
-        }
+    nextPageLoader = nextPageLoader || new NextPageLoader()
+    // 处理主题列表页面
+    if (pageType === PageType.THREADS_PAGE) {
+        document.addEventListener('wheel', (e) => {
+            const itemListSelector = ".tr3.t_one";
+            if (e.deltaY < 0 || nextPageLoader.isFetching) return;
+            if (!nextPageLoader.nextPageDummy) {
+                nextPageURL = getNextPageUrl();
+                if (!nextPageURL) return;
+                let divider = makeDivider(itemListSelector, () => {
+                    let divider = document.createElement("tr");
+                    let dividerContent = document.createElement("td");
+                    divider.setAttribute("class", "tr2 spp-next-page-loader-divider")
+                    divider.appendChild(dividerContent);
+                    dividerContent.colSpan = 5;
+                    dividerContent.style.textAlign = "center";
+                    dividerContent.style.fontWeight = "bold";
+                    dividerContent.innerText = "...";
+                    return divider;
+                });
+                divider.firstChild.innerText = "正在获取下一页的帖子......";
+                let p = nextPageLoader.GetURLDummy(nextPageURL);
+                p
+                    .then(html => nextPageLoader.nextPageDummy.innerHTML = html)
+                    .catch(err => {
+                        console.error(err);
+                        divider.firstChild.innerText = "获取下一页的帖子出错，请手动刷新";
+                    })
+                    .finally(() => {
+                        nextPageLoader.isFetching = false;
+                        divider.firstChild.innerText = "继续向下滚动将会加载下一页的帖子";
+                    });
 
-    })
+            }
+            // 否则判断一下是否到底了，到底了就追加下一页的内容
+            else if (Math.abs(document.documentElement.scrollHeight - (window.pageYOffset + window.innerHeight)) < 20) {
+                let divider = getElementByXpath(document, "//tr[@class='tr2 spp-next-page-loader-divider'][last()]");
+                nextPageLoader.AppendNextPageItems(itemListSelector, divider);
+                nextPageLoader.UpdatePageList();
+                divider.firstChild.innerText = `以下是第${page + 1}页`;
+                window.history.pushState({}, 0, nextPageURL); // 将地址栏也改变了
+                page += 1;
+                nextPageLoader.nextPageDummy = null;
+            }
 
+        })
+    }
+    // 处理楼层列表页面
+    if (pageType === PageType.POSTS_PAGE) {
+        document.addEventListener('wheel', (e) => {
+            const itemListSelector = ".t5.t2";
+            if (e.deltaY < 0 || nextPageLoader.isFetching) return;
+            if (!nextPageLoader.nextPageDummy) {
+                nextPageURL = getNextPageUrl();
+                if (!nextPageURL) return;
+                let divider = makeDivider(itemListSelector, () => {
+                    let divider = document.createElement("div");
+                    let dividerContent = document.createElement("span");
+                    divider.setAttribute("class", "t5 t2 spp-next-page-loader-divider")
+                    divider.appendChild(dividerContent);
+                    divider.style.textAlign = "center";
+                    divider.style.fontWeight = "bold";
+                    divider.style.fontSize = "14px";
+                    divider.innerText = "...";
+                    return divider;
+                });
+                divider.innerText = "加载中..";
+                nextPageLoader.GetURLDummy(nextPageURL)
+                    .then(html => {
+                        nextPageLoader.nextPageDummy.innerHTML = html
+                        hidePostImage(nextPageLoader.nextPageDummy);
+                        hideUserAvatar(nextPageLoader.nextPageDummy);
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        divider.innerText = "获取下一页的帖子出错，请手动刷新";
+                    })
+                    .finally(() => {
+                        nextPageLoader.isFetching = false;
+                        divider.innerText = "继续向下滚动将会加载下一页的帖子";
+                    });
+
+            }
+            // 否则判断一下是否到底了，到底了就追加下一页的内容
+            else if (Math.abs(document.documentElement.scrollHeight - (window.pageYOffset + window.innerHeight)) < 20) {
+                let divider = getElementByXpath(document, "//div[@class='t5 t2 spp-next-page-loader-divider'][last()]");
+                nextPageLoader.AppendNextPageItems(itemListSelector, divider);
+                nextPageLoader.UpdatePageList();
+                divider.innerText = `以下是第${page + 1}页`;
+                window.history.pushState({}, 0, nextPageURL); // 将地址栏也改变了
+                page += 1;
+                nextPageLoader.nextPageDummy = null;
+            }
+
+        })
+    }
+
+    let backToTop = document.createElement("div")
+    backToTop.innerHTML =
+        `<button id="spp-back-to-top">回到顶部</button>`
+    backToTop.style.display = "block";
+    backToTop.style.position = "fixed";
+    backToTop.style.bottom = "20px";
+    backToTop.style.right = "30px";
+    backToTop.style.zIndex = "99";
+    backToTop.style.width = "0";
+    backToTop.style.padding = "10";
+    backToTop.style.borderRadius = "10px";
+    let main = document.getElementById("main");
+    main.appendChild(backToTop);
+    backToTop.addEventListener("click", () => window.scrollTo({top: 0, behavior: 'smooth'}))
 
 }
 
@@ -549,10 +586,10 @@ function automaticTaskCollection() {
             hideUserAvatar();
         }
         if (GM_getValue("dynamicLoadingThreads") && document.location.href.indexOf("/thread.php") > -1) {
-            dynamicLoadingNextPage("thread");
+            dynamicLoadingNextPage(PageType.THREADS_PAGE);
         }
         if (GM_getValue("dynamicLoadingPosts") && document.location.href.indexOf("/read.php") > -1) {
-            dynamicLoadingNextPage("post");
+            dynamicLoadingNextPage(PageType.POSTS_PAGE);
         }
 
 
