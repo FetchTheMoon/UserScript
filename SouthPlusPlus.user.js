@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            Soul++
 // @namespace       SoulPlusPlus
-// @version         0.41
+// @version         0.5
 // @description     让魂+论坛变得更好用一些
 // @run-at          document-start
 // @author          镜花水中捞月
@@ -66,6 +66,14 @@ let menu = [
     {
         key: "dynamicLoadingPosts",
         title: "无缝加载下一页的楼层"
+    },
+    {
+        key: "dynamicLoadingSearchResult",
+        title: "无缝加载搜索页结果"
+    },
+    {
+        key: "BlockSearchResultFromADForum",
+        title: "屏蔽网赚区搜索结果"
     },
     {
         key: "hidePostImage",
@@ -325,6 +333,7 @@ function hideUserAvatar(target = document) {
 const PageType = Object.freeze({
     THREADS_PAGE: Symbol("主题列表"),
     POSTS_PAGE: Symbol("帖子列表"),
+    SEARCH_RESULT: Symbol("搜索结果")
 });
 
 function dynamicLoadingNextPage(pageType) {
@@ -381,6 +390,55 @@ function dynamicLoadingNextPage(pageType) {
     let nextPageLoader;
     let nextPageURL;
     nextPageLoader = nextPageLoader || new NextPageLoader()
+    // 处理搜索结果页面
+    if (pageType === PageType.SEARCH_RESULT) {
+        document.addEventListener('wheel', (e) => {
+            const itemListSelector = ".tr3.tac";
+            if (e.deltaY < 0 || nextPageLoader.isFetching) return;
+            if (!nextPageLoader.nextPageDummy) {
+                nextPageURL = getNextPageUrl();
+                if (!nextPageURL) return;
+                let divider = makeDivider(itemListSelector, () => {
+                    let divider = document.createElement("tr");
+                    let dividerContent = document.createElement("td");
+                    divider.setAttribute("class", "tr2 spp-next-page-loader-divider")
+                    divider.appendChild(dividerContent);
+                    dividerContent.colSpan = 7;
+                    dividerContent.style.textAlign = "center";
+                    dividerContent.style.fontWeight = "bold";
+                    dividerContent.innerText = "...";
+                    return divider;
+                });
+                divider.firstChild.innerText = "正在获取下一页的帖子......";
+                let p = nextPageLoader.GetURLDummy(nextPageURL);
+                p
+                    .then(html => {
+                        nextPageLoader.nextPageDummy.innerHTML = html
+                        if (GM_getValue("BlockSearchResultFromADForum")) BlockSearchResultFromADForum(nextPageLoader.nextPageDummy);
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        divider.firstChild.innerText = "获取下一页的帖子出错，请手动刷新";
+                    })
+                    .finally(() => {
+                        nextPageLoader.isFetching = false;
+                        divider.firstChild.innerText = "继续向下滚动将会加载下一页的帖子";
+                    });
+
+            }
+            // 否则判断一下是否到底了，到底了就追加下一页的内容
+            else if (Math.abs(document.documentElement.scrollHeight - (window.pageYOffset + window.innerHeight)) < 20) {
+                let divider = getElementByXpath(document, "//tr[@class='tr2 spp-next-page-loader-divider'][last()]");
+                nextPageLoader.AppendNextPageItems(itemListSelector, divider);
+                nextPageLoader.UpdatePageList();
+
+                divider.firstChild.innerText = `以下是第${nextPageURL.match(/page-(\d+)/)[1]}页`;
+                window.history.pushState({}, 0, nextPageURL); // 将地址栏也改变了
+                nextPageLoader.nextPageDummy = null;
+            }
+
+        })
+    }
     // 处理主题列表页面
     if (pageType === PageType.THREADS_PAGE) {
         document.addEventListener('wheel', (e) => {
@@ -549,6 +607,15 @@ function automaticTaskCollection() {
 
 }
 
+function BlockSearchResultFromADForum(target = document) {
+    target.querySelectorAll(".tr3.tac").forEach(ele => {
+        let forum = ele.childNodes[2];
+        if (forum.firstChild.getAttribute("href").match(/fid-17[1-4]/)) {
+            ele.style.display = "none";
+        }
+    });
+}
+
 //##############################################################
 // 执行入口
 //##############################################################
@@ -591,7 +658,13 @@ function automaticTaskCollection() {
         if (GM_getValue("dynamicLoadingPosts") && document.location.href.indexOf("/read.php") > -1) {
             dynamicLoadingNextPage(PageType.POSTS_PAGE);
         }
+        if (GM_getValue("dynamicLoadingSearchResult") && document.location.href.indexOf("/search.php") > -1) {
+            dynamicLoadingNextPage(PageType.SEARCH_RESULT);
+        }
 
+        if (GM_getValue("BlockSearchResultFromADForum") && document.location.href.indexOf("/search.php") > -1) {
+            BlockSearchResultFromADForum();
+        }
 
         if (GM_getValue("automaticTaskCollection")
             && (new Date().getTime()) - (parseInt(GM_getValue("LastAutomaticTaskCollectionDate")) || 0) > (18 * 3600 * 1000)
