@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            Soul++
 // @namespace       SoulPlusPlus
-// @version         0.4
+// @version         0.4a
 // @description     让魂+论坛变得更好用一些
 // @run-at          document-start
 // @author          镜花水中捞月
@@ -450,8 +450,8 @@ function dynamicLoadingNextPage(pageType) {
                 nextPageLoader.GetURLDummy(nextPageURL)
                     .then(html => {
                         nextPageLoader.nextPageDummy.innerHTML = html
-                        hidePostImage(nextPageLoader.nextPageDummy);
-                        hideUserAvatar(nextPageLoader.nextPageDummy);
+                        if (GM_getValue("hidePostImage")) hidePostImage(nextPageLoader.nextPageDummy);
+                        if (GM_getValue("hideUserAvatar")) hideUserAvatar(nextPageLoader.nextPageDummy);
                     })
                     .catch(err => {
                         console.error(err);
