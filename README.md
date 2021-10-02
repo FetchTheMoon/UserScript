@@ -21,6 +21,6 @@
 1. 先安装[Tampermonkey](https://www.tampermonkey.net/)插件（暴力猴可能用不了）： [Chrome商店](https://chrome.google.com/webstore/detail/tampermonkey/dhdgffkkebhmkfjojejmpbldmpobfkfo?hl=en) / [Edge商店](https://microsoftedge.microsoft.com/addons/detail/iikmkjmpaadaobahmlepeloendndfphd) / [FireFox商店](https://addons.mozilla.org/zh-CN/firefox/addon/tampermonkey/)
 
 2. 通过以下链接安装脚本
-    - [GreasyFork](https://sleazyfork.org/zh-CN/scripts/433161-soul)
+    - [~~GreasyFork~~（即使主动标记过了，还是被举报成功了，随它便吧）](https://sleazyfork.org/zh-CN/scripts/433161-soul)
     - [在备用地址安装脚本](https://cdn.jsdelivr.net/gh/FetchTheMoon/UserScript/SouthPlusPlus.user.js)
 
