@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            Soul++
 // @namespace       SoulPlusPlus
-// @version         0.5
+// @version         0.51
 // @description     让魂+论坛变得更好用一些
 // @run-at          document-start
 // @author          镜花水中捞月
@@ -39,6 +39,7 @@
 // @grant           GM_notification
 // @grant           GM_deleteValue
 // @grant           unsafeWindow
+// --------------------------------------------
 // @license         GPL-3.0 License
 // ==/UserScript==
 
@@ -47,69 +48,81 @@
 // 注册选项
 //##############################################################
 'use strict';
+const PageType = Object.freeze({
+    THREADS_PAGE: Symbol("普通主题列表"),
+    PIC_WALL_PAGE: Symbol("图墙区主题列表"),
+    POSTS_PAGE: Symbol("帖子列表"),
+    SEARCH_RESULT: Symbol("搜索结果")
+});
+
+const OptionType = Object.freeze({
+    CLICK: Symbol("点击生效一次的菜单项"),
+    SWITCH: Symbol("点击切换开关的菜单项"),
+});
+
 
 let menu = [
     {
         key: "loadingBoughtPostWithoutRefresh",
         title: "免刷新显示购买内容",
-        defaultValue: true
+        defaultValue: true,
+        optionType: OptionType.SWITCH,
     },
     {
         key: "automaticTaskCollection",
         title: "自动领取并完成论坛任务",
-        defaultValue: true
+        defaultValue: true,
+        optionType: OptionType.SWITCH,
     },
     {
         key: "dynamicLoadingThreads",
-        title: "无缝加载下一页的帖子"
+        title: "无缝加载下一页的帖子",
+        optionType: OptionType.SWITCH,
     },
     {
         key: "dynamicLoadingPosts",
-        title: "无缝加载下一页的楼层"
+        title: "无缝加载下一页的楼层",
+        optionType: OptionType.SWITCH,
     },
     {
         key: "dynamicLoadingSearchResult",
-        title: "无缝加载搜索页结果"
+        title: "无缝加载搜索页结果",
+        optionType: OptionType.SWITCH,
+    },
+    {
+        key: "dynamicLoadingPicWall",
+        title: "无缝加载图墙区帖子",
+        optionType: OptionType.SWITCH,
     },
     {
         key: "BlockSearchResultFromADForum",
-        title: "屏蔽网赚区搜索结果"
+        title: "屏蔽网赚区搜索结果",
+        optionType: OptionType.SWITCH,
     },
     {
         key: "hidePostImage",
-        title: "(sfw)安全模式 - 折叠帖子图片"
+        title: "(sfw)安全模式 - 折叠帖子图片",
+        optionType: OptionType.SWITCH,
     },
     {
         key: "hideUserAvatar",
-        title: "(sfw)安全模式 - 替换用户头像为默认"
-    },
+        title: "(sfw)安全模式 - 替换用户头像为默认",
+        optionType: OptionType.SWITCH,
+    }
 ];
 
 
-class MenuSwitchOption {
-    constructor(key, optionName, defaultValue) {
-        this.key = key;
-        this.optionName = optionName;
-        this.defaultValue = defaultValue;
-
+class MenuOption {
+    constructor(cfg) {
+        this.key = cfg.key;
+        this.title = cfg.title;
+        this.defaultValue = cfg.defaultValue;
+        this.onclick = cfg.onclick;
         if (GM_listValues().indexOf(this.key) === -1) GM_setValue(this.key, this.defaultValue ? this.defaultValue : false);
     }
 
     registerOption() {
-        this.optionId = GM_registerMenuCommand(`${GM_getValue(this.key) ? '✅' : '❌'} ${this.optionName}`, () => {
-            GM_setValue(this.key, !GM_getValue(this.key));
-            registerAllOptions();
-            GM_notification(
-                {
-                    text: `${this.optionName}已${GM_getValue(this.key) ? "✅启用" : "❌禁用"}\n刷新网页后生效`,
-                    timeout: 2000,
-                    onclick: () => location.reload(),
-                    // 这个ondone不生效？
-                    // ondone: ()=>location.reload()
-                });
-            setTimeout(() => location.reload(), 2000);
-
-        });
+        this.optionId = GM_registerMenuCommand(this.title, this.onclick);
     }
 
     unregisterOption() {
@@ -118,19 +131,53 @@ class MenuSwitchOption {
 }
 
 
+class SwitchOption extends MenuOption {
+    constructor(cfg) {
+        super(cfg);
+    }
+
+    registerOption() {
+        this.optionId = GM_registerMenuCommand(
+            `${GM_getValue(this.key) ? '✅' : '❌'} ${this.title}`,
+            this.onclick ? this.onclick : () => {
+                GM_setValue(this.key, !GM_getValue(this.key));
+                registerAllOptions();
+                GM_notification(
+                    {
+                        text: `${this.title}已${GM_getValue(this.key) ? "✅启用" : "❌禁用"}\n刷新网页后生效`,
+                        timeout: 2000,
+                        onclick: () => location.reload(),
+                        // 这个ondone不生效？
+                        // ondone: ()=>location.reload()
+                    });
+                setTimeout(() => location.reload(), 2000);
+            });
+    }
+}
+
 function registerAllOptions() {
     menu.forEach((item) => {
         if (item.instance) item.instance.unregisterOption();
-        item.instance = new MenuSwitchOption(item.key, item.title, item.defaultValue);
+        switch (item.optionType) {
+            case OptionType.SWITCH:
+                item.instance = new SwitchOption(item);
+                break;
+            case OptionType.CLICK:
+                item.instance = new MenuOption(item);
+                break;
+            default :
+                item.instance = new MenuOption(item);
+        }
+
         item.instance.registerOption();
     })
 }
 
-registerAllOptions();
 
 function getElementByXpath(from, xpath) {
     return from.evaluate(xpath, from, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
 }
+
 
 //##############################################################
 // 功能
@@ -330,12 +377,6 @@ function hideUserAvatar(target = document) {
     });
 }
 
-const PageType = Object.freeze({
-    THREADS_PAGE: Symbol("主题列表"),
-    POSTS_PAGE: Symbol("帖子列表"),
-    SEARCH_RESULT: Symbol("搜索结果")
-});
-
 function dynamicLoadingNextPage(pageType) {
 
     class NextPageLoader {
@@ -374,8 +415,11 @@ function dynamicLoadingNextPage(pageType) {
 
 
     function getNextPageUrl() {
-        let url = document.querySelector(".pages b").parentNode.nextSibling.firstChild.getAttribute("href");
-        return document.URL.indexOf(url) > -1 ? null : url;
+        let pageNum = document.querySelector(".pages b").parentNode;
+        let url = pageNum.nextSibling.firstChild.getAttribute("href");
+        if (pageNum.nextSibling.nextSibling.firstChild.getAttribute("class") === "pagesone") return null;
+        if (document.URL.includes(url)) return null;
+        return url;
     }
 
 
@@ -422,7 +466,7 @@ function dynamicLoadingNextPage(pageType) {
                     })
                     .finally(() => {
                         nextPageLoader.isFetching = false;
-                        divider.firstChild.innerText = "继续向下滚动将会加载下一页的帖子";
+                        divider.firstChild.innerText = "滚动条到底后继续向下滚动将会加载下一页的帖子";
                     });
 
             }
@@ -468,7 +512,7 @@ function dynamicLoadingNextPage(pageType) {
                     })
                     .finally(() => {
                         nextPageLoader.isFetching = false;
-                        divider.firstChild.innerText = "继续向下滚动将会加载下一页的帖子";
+                        divider.firstChild.innerText = "滚动条到底后继续向下滚动将会加载下一页的帖子";
                     });
 
             }
@@ -517,7 +561,7 @@ function dynamicLoadingNextPage(pageType) {
                     })
                     .finally(() => {
                         nextPageLoader.isFetching = false;
-                        divider.innerText = "继续向下滚动将会加载下一页的帖子";
+                        divider.innerText = "滚动条到底后继续向下滚动将会加载下一页的帖子";
                     });
 
             }
@@ -527,6 +571,63 @@ function dynamicLoadingNextPage(pageType) {
                 nextPageLoader.AppendNextPageItems(itemListSelector, divider);
                 nextPageLoader.UpdatePageList();
                 divider.innerText = `以下是第${page + 1}页`;
+                window.history.pushState({}, 0, nextPageURL); // 将地址栏也改变了
+                page += 1;
+                nextPageLoader.nextPageDummy = null;
+            }
+
+        })
+    }
+    // 处理图墙区主题列表页面
+    if (pageType === PageType.PIC_WALL_PAGE) {
+        document.addEventListener('wheel', (e) => {
+            const itemListSelector = ".dcsns-li.dcsns-rss.dcsns-feed-0";
+            if (e.deltaY < 0 || nextPageLoader.isFetching) return;
+            if (!nextPageLoader.nextPageDummy) {
+                nextPageURL = getNextPageUrl();
+                if (!nextPageURL) return;
+                let divider = makeDivider(itemListSelector, () => {
+                    let divider = document.createElement("tr");
+                    let dividerContent = document.createElement("td");
+                    divider.setAttribute("class", "tr2 spp-next-page-loader-divider")
+                    divider.appendChild(dividerContent);
+                    dividerContent.colSpan = 5;
+                    dividerContent.style.textAlign = "center";
+                    dividerContent.style.fontWeight = "bold";
+                    dividerContent.innerText = "...";
+                    return divider;
+                });
+                divider.firstChild.innerText = "正在获取下一页的帖子......";
+                let p = nextPageLoader.GetURLDummy(nextPageURL);
+                p
+                    .then(html =>
+                    {
+                        nextPageLoader.nextPageDummy.innerHTML = html;
+                        nextPageLoader.nextPageDummy.querySelectorAll(".dcsns-li.dcsns-rss.dcsns-feed-0 .lazy").forEach(ele=>{
+                            ele.setAttribute("loading","lazy");
+                            ele.setAttribute("class","");
+                            ele.setAttribute("src",ele.getAttribute("data-original"));
+                            ele.setAttribute("data-original", "");
+                            ele.style.display = "inline";
+                        });
+
+                    })
+                    .catch(err => {
+                        console.error(err);
+                        divider.firstChild.innerText = "获取下一页的帖子出错，请手动刷新";
+                    })
+                    .finally(() => {
+                        nextPageLoader.isFetching = false;
+                        divider.firstChild.innerText = "滚动条到底后继续向下滚动将会加载下一页的帖子";
+                    });
+
+            }
+            // 否则判断一下是否到底了，到底了就追加下一页的内容
+            else if (Math.abs(document.documentElement.scrollHeight - (window.pageYOffset + window.innerHeight)) < 20) {
+                let divider = getElementByXpath(document, "//tr[@class='tr2 spp-next-page-loader-divider'][last()]");
+                nextPageLoader.AppendNextPageItems(itemListSelector, divider);
+                nextPageLoader.UpdatePageList();
+                divider.firstChild.innerText = `以下是第${page + 1}页`;
                 window.history.pushState({}, 0, nextPageURL); // 将地址栏也改变了
                 page += 1;
                 nextPageLoader.nextPageDummy = null;
@@ -577,7 +678,7 @@ function automaticTaskCollection() {
                 .then(response => response.text())
                 .then(html => {
                         console.log(html);
-                        if (html.indexOf("success\t") > -1) alert(html.match(/!\[CDATA\[success\t(.+)]]>/)[1]);
+                        if (html.includes("success\t")) alert(html.match(/!\[CDATA\[success\t(.+)]]>/)[1]);
                     }
                 )
                 .catch(err => console.error(err));
@@ -616,10 +717,15 @@ function BlockSearchResultFromADForum(target = document) {
     });
 }
 
+
 //##############################################################
 // 执行入口
 //##############################################################
 (function () {
+
+
+    registerAllOptions();
+
     let mainInterval = setInterval(main, 50);
     let mainStart = (new Date()).getTime();
 
@@ -643,26 +749,29 @@ function BlockSearchResultFromADForum(target = document) {
         // return;
         //##############################################################
 
-        if (GM_getValue("loadingBoughtPostWithoutRefresh") && document.location.href.indexOf("/read.php") > -1) {
+        if (GM_getValue("loadingBoughtPostWithoutRefresh") && document.location.href.includes("/read.php")) {
             loadingBoughtPostWithoutRefresh();
         }
-        if (GM_getValue("hidePostImage") && document.location.href.indexOf("/read.php") > -1) {
+        if (GM_getValue("hidePostImage") && document.location.href.includes("/read.php")) {
             hidePostImage();
         }
-        if (GM_getValue("hideUserAvatar") && document.location.href.indexOf("/read.php") > -1) {
+        if (GM_getValue("hideUserAvatar") && document.location.href.includes("/read.php")) {
             hideUserAvatar();
         }
-        if (GM_getValue("dynamicLoadingThreads") && document.location.href.indexOf("/thread.php") > -1) {
+        if (GM_getValue("dynamicLoadingThreads") && (document.location.href.includes("/thread.php"))) {
             dynamicLoadingNextPage(PageType.THREADS_PAGE);
         }
-        if (GM_getValue("dynamicLoadingPosts") && document.location.href.indexOf("/read.php") > -1) {
+        if (GM_getValue("dynamicLoadingPicWall") && document.location.href.includes("/thread_new.php")) {
+            dynamicLoadingNextPage(PageType.PIC_WALL_PAGE);
+        }
+        if (GM_getValue("dynamicLoadingPosts") && document.location.href.includes("/read.php")) {
             dynamicLoadingNextPage(PageType.POSTS_PAGE);
         }
-        if (GM_getValue("dynamicLoadingSearchResult") && document.location.href.indexOf("/search.php") > -1) {
+        if (GM_getValue("dynamicLoadingSearchResult") && document.location.href.includes("/search.php")) {
             dynamicLoadingNextPage(PageType.SEARCH_RESULT);
         }
 
-        if (GM_getValue("BlockSearchResultFromADForum") && document.location.href.indexOf("/search.php") > -1) {
+        if (GM_getValue("BlockSearchResultFromADForum") && document.location.href.includes("/search.php")) {
             BlockSearchResultFromADForum();
         }
 
