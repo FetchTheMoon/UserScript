@@ -860,11 +860,10 @@ function threadAddAnchorAttribute(target, pg, forumID) {
 
 function highlightLastViewedThread(target = document) {
     target.querySelectorAll("a").forEach(ele => {
-        let id = ele.getAttribute("id");
-        if (!id) return;
-        let match = id.match(/a_ajax_(\d+)/)
-        if (!match) return;
-        let tid = match[1];
+         
+        let threadContainer = ele.closest(".tr3.t_one");
+        if (!threadContainer) return;
+        let tid = threadContainer.getAttribute("tid");
 
         function recordTid(event) {
             event.stopPropagation();
