@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            Soul++
 // @namespace       SoulPlusPlus
-// @version         0.51
+// @version         0.52
 // @description     让魂+论坛变得更好用一些
 // @run-at          document-start
 // @author          镜花水中捞月
@@ -600,13 +600,12 @@ function dynamicLoadingNextPage(pageType) {
                 divider.firstChild.innerText = "正在获取下一页的帖子......";
                 let p = nextPageLoader.GetURLDummy(nextPageURL);
                 p
-                    .then(html =>
-                    {
+                    .then(html => {
                         nextPageLoader.nextPageDummy.innerHTML = html;
-                        nextPageLoader.nextPageDummy.querySelectorAll(".dcsns-li.dcsns-rss.dcsns-feed-0 .lazy").forEach(ele=>{
-                            ele.setAttribute("loading","lazy");
-                            ele.setAttribute("class","");
-                            ele.setAttribute("src",ele.getAttribute("data-original"));
+                        nextPageLoader.nextPageDummy.querySelectorAll(".dcsns-li.dcsns-rss.dcsns-feed-0 .lazy").forEach(ele => {
+                            ele.setAttribute("loading", "lazy");
+                            ele.setAttribute("class", "");
+                            ele.setAttribute("src", ele.getAttribute("data-original"));
                             ele.setAttribute("data-original", "");
                             ele.style.display = "inline";
                         });
@@ -635,25 +634,38 @@ function dynamicLoadingNextPage(pageType) {
 
         })
     }
-
-    let backToTop = document.createElement("div")
-    backToTop.innerHTML =
-        `<button id="spp-back-to-top">回到顶部</button>`
-    backToTop.style.display = "block";
-    backToTop.style.position = "fixed";
-    backToTop.style.bottom = "20px";
-    backToTop.style.right = "30px";
-    backToTop.style.zIndex = "99";
-    backToTop.style.width = "0";
-    backToTop.style.padding = "10";
-    backToTop.style.borderRadius = "10px";
-    let main = document.getElementById("main");
-    main.appendChild(backToTop);
-    backToTop.addEventListener("click", () => window.scrollTo({top: 0, behavior: 'smooth'}))
-
 }
 
-function automaticTaskCollection() {
+async function automaticTaskCollection() {
+
+    function setUIDsValue(uid, value) {
+        let tmp = GM_getValue("LastAutomaticTaskCollectionDate") || {};
+        tmp[uid] = value;
+        GM_setValue("LastAutomaticTaskCollectionDate", tmp);
+    }
+
+    if (document.querySelector("#login_0")) {
+        console.log(`尚未登录，不接任务`);
+        return
+    }
+
+    let uid = document.querySelector("#menu_profile .ul2").innerHTML.match(/u\.php\?action-show-uid-(\d+)\.html/)[1];
+    let uname = document.querySelector("#user-login a").innerText;
+
+    console.log(GM_getValue("LastAutomaticTaskCollectionDate"));
+    let lastTime = GM_getValue("LastAutomaticTaskCollectionDate") ?
+        (parseInt(GM_getValue("LastAutomaticTaskCollectionDate")[uid]) || 0) : 0;
+    console.log(`${uname}[${uid}] 上次：${new Date(lastTime).toLocaleDateString()} ${new Date(lastTime).toLocaleTimeString()}`);
+
+
+    if (new Date().getTime() - lastTime < (3600 * 1000)) {
+        console.log("再等等……");
+        return;
+    }
+
+    let sleep = (ms) => {
+        return new Promise(resolve => setTimeout(resolve, ms))
+    }
 
     async function forumTask(pageURL, selector, jobType) {
         let dummy = await fetch(
@@ -684,9 +696,9 @@ function automaticTaskCollection() {
                 .catch(err => console.error(err));
         }
 
-        dummy.querySelectorAll(selector).forEach(t);
+        await dummy.querySelectorAll(selector).forEach(t);
 
-
+        console.log(`${pageURL} done, ${new Date().getTime()}`)
     }
 
     for (let i = 0; i < 2; i++) {
@@ -695,16 +707,15 @@ function automaticTaskCollection() {
             "a[title=按这申请此任务]",
             "job"
         ).catch(err => console.error(err));
-
+        await sleep(3000);
         forumTask(
             "/plugin.php?H_name-tasks-actions-newtasks.html.html",
             "a[title=领取此奖励]",
             "job2"
         ).catch(err => console.error(err));
     }
-    console.log(`本次领取时间:${new Date().getTime()}`);
-    GM_setValue("LastAutomaticTaskCollectionDate", new Date().getTime());
-
+    console.log(`${uname}[${uid}], 本次领取时间:${new Date().getTime()}`);
+    setUIDsValue(uid, new Date().getTime());
 
 }
 
@@ -717,6 +728,22 @@ function BlockSearchResultFromADForum(target = document) {
     });
 }
 
+function BackToTop() {
+    let backToTop = document.createElement("div")
+    backToTop.innerHTML =
+        `<button id="spp-back-to-top">回到顶部</button>`
+    backToTop.style.display = "block";
+    backToTop.style.position = "fixed";
+    backToTop.style.bottom = "20px";
+    backToTop.style.right = "30px";
+    backToTop.style.zIndex = "99";
+    backToTop.style.width = "0";
+    backToTop.style.padding = "10";
+    backToTop.style.borderRadius = "10px";
+    let main = document.getElementById("main");
+    main.appendChild(backToTop);
+    backToTop.addEventListener("click", () => window.scrollTo({top: 0, behavior: 'smooth'}))
+}
 
 //##############################################################
 // 执行入口
@@ -748,6 +775,7 @@ function BlockSearchResultFromADForum(target = document) {
         // console.log(GM_listValues());
         // return;
         //##############################################################
+        BackToTop();
 
         if (GM_getValue("loadingBoughtPostWithoutRefresh") && document.location.href.includes("/read.php")) {
             loadingBoughtPostWithoutRefresh();
@@ -776,7 +804,6 @@ function BlockSearchResultFromADForum(target = document) {
         }
 
         if (GM_getValue("automaticTaskCollection")
-            && (new Date().getTime()) - (parseInt(GM_getValue("LastAutomaticTaskCollectionDate")) || 0) > (18 * 3600 * 1000)
         ) {
             automaticTaskCollection();
         }
