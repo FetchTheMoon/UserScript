@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            Soul++
 // @namespace       SoulPlusPlus
-// @version         0.52
+// @version         0.6
 // @description     让魂+论坛变得更好用一些
 // @run-at          document-start
 // @author          镜花水中捞月
@@ -108,7 +108,14 @@ let menu = [
         key: "hideUserAvatar",
         title: "(sfw)安全模式 - 替换用户头像为默认",
         optionType: OptionType.SWITCH,
-    }
+    },
+    {
+        key: "highlightLastViewedThread",
+        title: "在板块页面高亮刚才浏览的帖子",
+        defaultValue: true,
+        optionType: OptionType.SWITCH,
+    },
+
 ];
 
 
@@ -183,8 +190,8 @@ function getElementByXpath(from, xpath) {
 // 功能
 //##############################################################
 
-function loadingBoughtPostWithoutRefresh() {
-    let buyButtons = document.querySelectorAll(".quote.jumbotron>.btn.btn-danger")
+function loadingBoughtPostWithoutRefresh(target = document) {
+    let buyButtons = target.querySelectorAll(".quote.jumbotron>.btn.btn-danger")
     buyButtons.forEach(button => {
         // 获取GET购买地址
         const urlRegex = /location\.href='(.+)'/
@@ -196,11 +203,11 @@ function loadingBoughtPostWithoutRefresh() {
         // 避免点击按钮的时候跳转，删掉这个属性
         button.setAttribute("onclick", "null");
         // 拿到帖子ID
-        let postContainer = button.parentNode.parentNode;
+        let postContainer = button.closest(".tpc_content .f14")
         let post_id = postContainer.getAttribute("id");
-
         // 添加点击事件，用fetch发送请求，然后读取页面再直接修改当前页面
         let customPurchase = (e => {
+            e.stopPropagation();
             let btn = e.target;
             btn.setAttribute("value", "正在购买……请稍等………");
             try {
@@ -211,10 +218,14 @@ function loadingBoughtPostWithoutRefresh() {
                     })
                     .then(resp => resp.text())
                     .then(text => {
-                        if (text.indexOf("操作完成") === -1) {
+                        if (!text.includes("操作完成")) {
                             alert("购买失败！");
+                            return;
                         }
-                        fetch(document.URL, {
+                        let threadID = postContainer.getAttribute("tid");
+                        let pg = postContainer.getAttribute("page");
+                        let resultURL = `./read.php?tid=${threadID}&page=${pg}`;
+                        fetch(resultURL, {
                             credentials: 'include',
                             mode: "no-cors"
                         }).then(resp => resp.text())
@@ -317,11 +328,13 @@ function hidePostImage(target = document) {
 
         // 事件监听
         wrapper.addEventListener("mouseenter", (e) => {
+            e.stopPropagation();
             e.target.querySelector(".spp-thread-imgs").style.display = "";
             e.target.querySelector(".spp-img-mask-icon-hide").style.display = "none";
             e.target.querySelector(".spp-img-mask-icon-show").style.display = "";
         });
         wrapper.addEventListener("mouseleave", (e) => {
+            e.stopPropagation();
             e.target.querySelector(".spp-thread-imgs").style.display = "none";
             e.target.querySelector(".spp-img-mask-icon-hide").style.display = "";
             e.target.querySelector(".spp-img-mask-icon-show").style.display = "none";
@@ -364,11 +377,13 @@ function hideUserAvatar(target = document) {
 
             // 事件监听
             wrapper.addEventListener("mouseenter", (e) => {
+                e.stopPropagation();
                 e.target.querySelector(".spp-avatar-fake").style.display = "none";
                 e.target.querySelector(".spp-avatar-real").style.display = "";
             });
 
             wrapper.addEventListener("mouseleave", (e) => {
+                e.stopPropagation();
                 e.target.querySelector(".spp-avatar-fake").style.display = "";
                 e.target.querySelector(".spp-avatar-real").style.display = "none";
             });
@@ -437,6 +452,7 @@ function dynamicLoadingNextPage(pageType) {
     // 处理搜索结果页面
     if (pageType === PageType.SEARCH_RESULT) {
         document.addEventListener('wheel', (e) => {
+            e.stopPropagation();
             const itemListSelector = ".tr3.tac";
             if (e.deltaY < 0 || nextPageLoader.isFetching) return;
             if (!nextPageLoader.nextPageDummy) {
@@ -486,6 +502,7 @@ function dynamicLoadingNextPage(pageType) {
     // 处理主题列表页面
     if (pageType === PageType.THREADS_PAGE) {
         document.addEventListener('wheel', (e) => {
+            e.stopPropagation();
             const itemListSelector = ".tr3.t_one";
             if (e.deltaY < 0 || nextPageLoader.isFetching) return;
             if (!nextPageLoader.nextPageDummy) {
@@ -505,7 +522,11 @@ function dynamicLoadingNextPage(pageType) {
                 divider.firstChild.innerText = "正在获取下一页的帖子......";
                 let p = nextPageLoader.GetURLDummy(nextPageURL);
                 p
-                    .then(html => nextPageLoader.nextPageDummy.innerHTML = html)
+                    .then(html => {
+                        nextPageLoader.nextPageDummy.innerHTML = html;
+                        threadAddAnchorAttribute(nextPageLoader.nextPageDummy, page + 1, fid);
+                        if (GM_getValue("highlightLastViewedThread")) highlightLastViewedThread(nextPageLoader.nextPageDummy);
+                    })
                     .catch(err => {
                         console.error(err);
                         divider.firstChild.innerText = "获取下一页的帖子出错，请手动刷新";
@@ -532,6 +553,7 @@ function dynamicLoadingNextPage(pageType) {
     // 处理楼层列表页面
     if (pageType === PageType.POSTS_PAGE) {
         document.addEventListener('wheel', (e) => {
+            e.stopPropagation();
             const itemListSelector = ".t5.t2";
             if (e.deltaY < 0 || nextPageLoader.isFetching) return;
             if (!nextPageLoader.nextPageDummy) {
@@ -552,6 +574,8 @@ function dynamicLoadingNextPage(pageType) {
                 nextPageLoader.GetURLDummy(nextPageURL)
                     .then(html => {
                         nextPageLoader.nextPageDummy.innerHTML = html
+                        postAddAnchorAttribute(nextPageLoader.nextPageDummy, page + 1, tid);
+                        if (GM_getValue("loadingBoughtPostWithoutRefresh")) loadingBoughtPostWithoutRefresh(nextPageLoader.nextPageDummy);
                         if (GM_getValue("hidePostImage")) hidePostImage(nextPageLoader.nextPageDummy);
                         if (GM_getValue("hideUserAvatar")) hideUserAvatar(nextPageLoader.nextPageDummy);
                     })
@@ -571,7 +595,7 @@ function dynamicLoadingNextPage(pageType) {
                 nextPageLoader.AppendNextPageItems(itemListSelector, divider);
                 nextPageLoader.UpdatePageList();
                 divider.innerText = `以下是第${page + 1}页`;
-                window.history.pushState({}, 0, nextPageURL); // 将地址栏也改变了
+                // window.history.pushState({}, 0, nextPageURL); // 将地址栏也改变了
                 page += 1;
                 nextPageLoader.nextPageDummy = null;
             }
@@ -581,6 +605,7 @@ function dynamicLoadingNextPage(pageType) {
     // 处理图墙区主题列表页面
     if (pageType === PageType.PIC_WALL_PAGE) {
         document.addEventListener('wheel', (e) => {
+            e.stopPropagation();
             const itemListSelector = ".dcsns-li.dcsns-rss.dcsns-feed-0";
             if (e.deltaY < 0 || nextPageLoader.isFetching) return;
             if (!nextPageLoader.nextPageDummy) {
@@ -729,20 +754,139 @@ function BlockSearchResultFromADForum(target = document) {
 }
 
 function BackToTop() {
-    let backToTop = document.createElement("div")
-    backToTop.innerHTML =
-        `<button id="spp-back-to-top">回到顶部</button>`
+
+    function isInViewPort(ele) {
+        const viewWidth = window.innerWidth;
+        const viewHeight = window.innerHeight;
+        const {
+            top,
+            right,
+            bottom,
+            left,
+        } = ele.getBoundingClientRect();
+
+        return (
+            top >= 0
+            && left >= 0
+            && right <= viewWidth
+            && bottom <= viewHeight
+        );
+    }
+
+    let backToTop = document.createElement("div");
+
+    backToTop.innerHTML = "<button>回到顶部</button>";
+    backToTop.setAttribute("id", "spp-back-to-top");
+    backToTop.setAttribute("draggable", "true");
     backToTop.style.display = "block";
     backToTop.style.position = "fixed";
-    backToTop.style.bottom = "20px";
-    backToTop.style.right = "30px";
+    backToTop.style.background = "#efefef";
+    backToTop.style.left = "calc(50vw + 470px)";
+    backToTop.style.bottom = "40px";
+    backToTop.style.left = GM_getValue("backToTop_left") ? GM_getValue("backToTop_left") : "calc(50vw + 470px)";
+    backToTop.style.bottom = GM_getValue("backToTop_bottom") ? GM_getValue("backToTop_bottom") : "40px";
     backToTop.style.zIndex = "99";
-    backToTop.style.width = "0";
+    backToTop.style.width = "30px";
     backToTop.style.padding = "10";
-    backToTop.style.borderRadius = "10px";
+    backToTop.style.borderRadius = "5px";
     let main = document.getElementById("main");
     main.appendChild(backToTop);
-    backToTop.addEventListener("click", () => window.scrollTo({top: 0, behavior: 'smooth'}))
+    backToTop.addEventListener("click", (e) => {
+        e.stopPropagation();
+        window.scrollTo({top: 0, behavior: "smooth"});
+    });
+    let offsetX;
+    let offsetY;
+
+    backToTop.addEventListener("dragstart", (e) => {
+        e.stopPropagation();
+        // console.log(`e.offset:${e.offsetX},${e.offsetY}`);
+        // 得到鼠标在元素内的偏移
+        offsetX = e.offsetX;
+        offsetY = e.offsetY;
+    });
+
+    backToTop.addEventListener("dragend", (e) => {
+        e.stopPropagation();
+        // alert("?");
+        console.log(`e.client:${e.clientX},${e.clientY}`);
+        // 获得丄的交叉点坐标
+        let _50vw = window.innerWidth / 2;
+        let _100vh = window.innerHeight;
+
+        // 计算出相对丄交叉点的偏移量
+        let offsetLeft = e.clientX - offsetX - _50vw;
+        let offsetBottom = _100vh - e.clientY - (e.target.clientHeight - offsetY);
+
+        // 防止拖到视口以外了
+        if (_50vw + offsetLeft >= 0
+            && _50vw + offsetLeft + e.target.clientWidth <= window.innerWidth
+            && offsetBottom > 0
+            && offsetBottom + e.target.clientHeight <= window.innerHeight
+        ) {
+            backToTop.style.left = `calc(50vw + ${offsetLeft}px)`;
+            backToTop.style.bottom = `${offsetBottom}px`;
+
+            GM_setValue("backToTop_left", backToTop.style.left);
+            GM_setValue("backToTop_bottom", backToTop.style.bottom);
+        }
+
+    });
+
+
+}
+
+function postAddAnchorAttribute(target, pg, threadID) {
+    target.querySelectorAll(".tpc_content .f14").forEach(ele => {
+        ele.setAttribute("page", pg);
+        ele.setAttribute("tid", threadID);
+        let pid = ele.previousElementSibling.getAttribute("name");
+        ele.setAttribute("pid", pid);
+
+    });
+}
+
+function threadAddAnchorAttribute(target, pg, forumID) {
+    target.querySelectorAll(".tr3.t_one").forEach(ele => {
+        ele.setAttribute("page", pg);
+        ele.setAttribute("fid", forumID);
+        let tid_m = ele.querySelector("a").getAttribute("href").match(/tid-(\d+)/);
+        if (!tid_m) return;
+        let tid = tid_m[1];
+        ele.setAttribute("tid", tid);
+
+    });
+}
+
+function highlightLastViewedThread(target = document) {
+    target.querySelectorAll("a").forEach(ele => {
+        let id = ele.getAttribute("id");
+        if (!id) return;
+        let match = id.match(/a_ajax_(\d+)/)
+        if (!match) return;
+        let tid = match[1];
+
+        function recordTid(event) {
+            event.stopPropagation();
+            sessionStorage.setItem("lastViewedThread", tid);
+        }
+
+        ele.addEventListener("click", recordTid);
+        // ele.addEventListener("dragend", recordTid);
+        console.log(`上次浏览的帖子tid：${sessionStorage.getItem("lastViewedThread")}`);
+        if (ele.getAttribute("id") === `a_ajax_${sessionStorage.getItem("lastViewedThread")}`) {
+            ele.parentNode.parentNode.parentNode.style.backgroundColor = "#deeeff";
+
+            document.addEventListener('readystatechange', (event) => {
+                if (document.readyState === "complete") {
+
+                    history.scrollRestoration = "manual";
+                    ele.scrollIntoView({behavior: "auto", block: "center"});
+
+                }
+            });
+        }
+    });
 }
 
 //##############################################################
@@ -777,6 +921,12 @@ function BackToTop() {
         //##############################################################
         BackToTop();
 
+        if (document.location.href.includes("/read.php")) {
+            postAddAnchorAttribute(document, page, tid);
+        }
+        if (document.location.href.includes("/thread.php")) {
+            threadAddAnchorAttribute(document, page, fid);
+        }
         if (GM_getValue("loadingBoughtPostWithoutRefresh") && document.location.href.includes("/read.php")) {
             loadingBoughtPostWithoutRefresh();
         }
@@ -798,16 +948,15 @@ function BackToTop() {
         if (GM_getValue("dynamicLoadingSearchResult") && document.location.href.includes("/search.php")) {
             dynamicLoadingNextPage(PageType.SEARCH_RESULT);
         }
-
         if (GM_getValue("BlockSearchResultFromADForum") && document.location.href.includes("/search.php")) {
             BlockSearchResultFromADForum();
         }
-
-        if (GM_getValue("automaticTaskCollection")
-        ) {
+        if (GM_getValue("automaticTaskCollection")) {
             automaticTaskCollection();
         }
-
+        if (GM_getValue("highlightLastViewedThread") && (document.location.href.includes("/thread.php") || document.location.href.includes("/thread_new.php"))) {
+            highlightLastViewedThread();
+        }
 
     }
 })()
