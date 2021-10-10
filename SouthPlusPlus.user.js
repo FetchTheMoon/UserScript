@@ -41,7 +41,6 @@
 // @grant           GM_addStyle
 // @grant           GM_getResourceText
 // @grant           unsafeWindow
-// @antifeature     referral-link
 // --------------------------------------------
 // @require         https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.js
 // @resource        TOASTIFY_CSS https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css
