@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name            Soul++
 // @namespace       SoulPlusPlus
-// @version         0.60
-// @description     让魂+论坛变得更好用一些
+// @version         1.0.0
+// @description     提升你的魂+使用体验
 // @run-at          document-start
 // @author          镜花水中捞月
 // @homepage        https://github.com/FetchTheMoon
 // @icon64          https://cdn.jsdelivr.net/gh/FetchTheMoon/UserScript/LOGO.png
 // @supportURL      https://github.com/FetchTheMoon/UserScript/issues
-// --------------------------------------------
+// ----------------COPY START---------------------
 // @match           https://*.spring-plus.net/*
 // @match           https://*.summer-plus.net/*
 // @match           https://*.soul-plus.net/*
@@ -34,12 +34,18 @@
 // @grant           GM_getValue
 // @grant           GM_setValue
 // @grant           GM_listValues
-// @grant           GM_registerMenuCommand
-// @grant           GM_unregisterMenuCommand
+// @grant           GM_addValueChangeListener
+// @grant           GM_removeValueChangeListener
 // @grant           GM_notification
 // @grant           GM_deleteValue
+// @grant           GM_addStyle
+// @grant           GM_getResourceText
 // @grant           unsafeWindow
+// @antifeature     referral-link
 // --------------------------------------------
+// @require         https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.js
+// @resource        TOASTIFY_CSS https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css
+// ----------------COPY END---------------------
 // @license         GPL-3.0 License
 // ==/UserScript==
 
@@ -48,6 +54,7 @@
 // 注册选项
 //##############################################################
 'use strict';
+
 const PageType = Object.freeze({
     THREADS_PAGE: Symbol("普通主题列表"),
     PIC_WALL_PAGE: Symbol("图墙区主题列表"),
@@ -55,142 +62,213 @@ const PageType = Object.freeze({
     SEARCH_RESULT: Symbol("搜索结果")
 });
 
-const OptionType = Object.freeze({
-    CLICK: Symbol("点击生效一次的菜单项"),
-    SWITCH: Symbol("点击切换开关的菜单项"),
+const ToastType = Object.freeze({
+    INFO: Symbol("信息"),
+    SUCCESS: Symbol("成功"),
+    DANGER: Symbol("危险，失败"),
+    WARNING: Symbol("警告")
 });
 
-
-let menu = [
-    {
-        key: "loadingBoughtPostWithoutRefresh",
-        title: "免刷新显示购买内容",
-        defaultValue: true,
-        optionType: OptionType.SWITCH,
-    },
-    {
-        key: "automaticTaskCollection",
-        title: "自动领取并完成论坛任务",
-        defaultValue: true,
-        optionType: OptionType.SWITCH,
-    },
-    {
-        key: "dynamicLoadingThreads",
-        title: "无缝加载下一页的帖子",
-        optionType: OptionType.SWITCH,
-    },
-    {
-        key: "dynamicLoadingPosts",
-        title: "无缝加载下一页的楼层",
-        optionType: OptionType.SWITCH,
-    },
-    {
-        key: "dynamicLoadingSearchResult",
-        title: "无缝加载搜索页结果",
-        optionType: OptionType.SWITCH,
-    },
-    {
-        key: "dynamicLoadingPicWall",
-        title: "无缝加载图墙区帖子",
-        optionType: OptionType.SWITCH,
-    },
-    {
-        key: "BlockSearchResultFromADForum",
-        title: "屏蔽网赚区搜索结果",
-        optionType: OptionType.SWITCH,
-    },
-    {
-        key: "hidePostImage",
-        title: "(sfw)安全模式 - 折叠帖子图片",
-        optionType: OptionType.SWITCH,
-    },
-    {
-        key: "hideUserAvatar",
-        title: "(sfw)安全模式 - 替换用户头像为默认",
-        optionType: OptionType.SWITCH,
-    },
-    {
-        key: "highlightLastViewedThread",
-        title: "在板块页面高亮刚才浏览的帖子",
-        defaultValue: true,
-        optionType: OptionType.SWITCH,
-    },
-
-];
-
-
-class MenuOption {
-    constructor(cfg) {
-        this.key = cfg.key;
-        this.title = cfg.title;
-        this.defaultValue = cfg.defaultValue;
-        this.onclick = cfg.onclick;
-        if (GM_listValues().indexOf(this.key) === -1) GM_setValue(this.key, this.defaultValue ? this.defaultValue : false);
-    }
-
-    registerOption() {
-        this.optionId = GM_registerMenuCommand(this.title, this.onclick);
-    }
-
-    unregisterOption() {
-        GM_unregisterMenuCommand(this.optionId);
-    }
-}
-
-
-class SwitchOption extends MenuOption {
-    constructor(cfg) {
-        super(cfg);
-    }
-
-    registerOption() {
-        this.optionId = GM_registerMenuCommand(
-            `${GM_getValue(this.key) ? '✅' : '❌'} ${this.title}`,
-            this.onclick ? this.onclick : () => {
-                GM_setValue(this.key, !GM_getValue(this.key));
-                registerAllOptions();
-                GM_notification(
-                    {
-                        text: `${this.title}已${GM_getValue(this.key) ? "✅启用" : "❌禁用"}\n刷新网页后生效`,
-                        timeout: 2000,
-                        onclick: () => location.reload(),
-                        // 这个ondone不生效？
-                        // ondone: ()=>location.reload()
-                    });
-                setTimeout(() => location.reload(), 2000);
-            });
-    }
-}
-
-function registerAllOptions() {
-    menu.forEach((item) => {
-        if (item.instance) item.instance.unregisterOption();
-        switch (item.optionType) {
-            case OptionType.SWITCH:
-                item.instance = new SwitchOption(item);
-                break;
-            case OptionType.CLICK:
-                item.instance = new MenuOption(item);
-                break;
-            default :
-                item.instance = new MenuOption(item);
-        }
-
-        item.instance.registerOption();
-    })
-}
-
+const FETCH_CONFIG = {
+    credentials: 'include',
+    mode: "no-cors"
+};
 
 function getElementByXpath(from, xpath) {
     return from.evaluate(xpath, from, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
 }
 
+function waitForImageToLoad(imageElement) {
+    return new Promise(resolve => {
+        imageElement.onload = resolve
+    })
+}
+
+function toast(info, toastType, time = 3000, close = true) {
+    let t;
+    switch (toastType) {
+        case ToastType.INFO:
+            t = "linear-gradient(109deg, #3da1e0, #004dc1)";
+            break;
+        case ToastType.SUCCESS:
+            t = "linear-gradient(213deg, #5daa16, #05bb1b)";
+            break;
+        case ToastType.DANGER:
+            t = "linear-gradient(18deg, #cb3131, #ac1415)";
+            break;
+        case ToastType.WARNING:
+            t = "linear-gradient(180deg, #e98202, #fe5e00)";
+            break;
+        default:
+            t = "linear-gradient(109deg, #3da1e0, #004dc1)";
+    }
+    Toastify({
+        text: info,
+        duration: 3000,
+        close: true,
+        gravity: "bottom", // `top` or `bottom`
+        position: "right", // `left`, `center` or `right`
+        stopOnFocus: true, // Prevents dismissing of toast on hover
+        style: {
+            background: t,
+        },
+        onClick: function () {
+        } // Callback after click
+    }).showToast();
+
+}
+
+function getTimeStamp() {
+    return new Date().getTime();
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+
+function getRandomInt(min, max) {
+    min = Math.ceil(min);
+    max = Math.floor(max);
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+async function fetchRetry(url, options, n = 1) {
+    try {
+        return await fetch(url, options)
+    } catch (err) {
+        if (n <= 1) throw err;
+        return await fetchRetry(url, options, n - 1);
+    }
+}
+
+async function getPage(url, dummy = false, retry = 3, toastPop = false) {
+    return await fetchRetry(url, FETCH_CONFIG, retry)
+        .then(resp => resp.text())
+        .then(html => {
+            if (dummy) {
+                let dummy = document.createElement("html");
+                dummy.insertAdjacentHTML('afterbegin', html);
+                return dummy
+            } else {
+                return html
+            }
+        }).catch(e => {
+                if (toastPop) {
+                    toast(`访问 ${url} 失败\n${e}`, ToastType.WARNING);
+                } else {
+                    console.error(`访问 ${url} 失败\n${e}`);
+                }
+            }
+        );
+}
+
+class GMK {
+
+    static addStyle(css) {
+        return GM_addStyle(css);
+    }
+
+    static setValue(key, value) {
+        return GM_setValue(key, value)
+    }
+
+    static getValue(key) {
+        return GM_getValue(key)
+    }
+
+    static getResourceText(key) {
+        return GM_getResourceText(key);
+    }
+
+    static listValues() {
+        return GM_listValues();
+    }
+
+    static deleteValue(_name) {
+        return GM_deleteValue(_name);
+    }
+
+    // listener_id = GM_addValueChangeListener(name, function(name, old_value, new_value, remote) {})
+    static addValueChangeListener(_name, callback) {
+        return GM_addValueChangeListener(_name, callback);
+    }
+
+    static removeValueChangeListener(listener_id) {
+        return GM_removeValueChangeListener(listener_id);
+    }
+}
+
+class MppManager {
+    static TASK_KEY = "Soul++:MppThreadsStatus";
+    static TASK_RUNNING = "Soul++:MppTaskRunning"
+
+    constructor() {
+    }
+
+    static taskStarted() {
+        return GMK.setValue(this.TASK_RUNNING, true);
+    }
+
+    static taskStopped() {
+        return GMK.setValue(this.TASK_RUNNING, false);
+    }
+
+    static isTaskRunning() {
+        return GMK.getValue(this.TASK_RUNNING);
+    }
+
+    static getLastFetchTime() {
+        let ret = 0;
+        for (const [_tid, status] of Object.entries(this.getMarkList())) {
+            ret = ret < status['lastFetchTime'] ? status['lastFetchTime'] : ret
+        }
+        return ret;
+    }
+
+    static isThreadExist(_tid) {
+        return this.getMarkList().hasOwnProperty(_tid);
+    }
+
+    static getMarkList() {
+        return GMK.getValue(this.TASK_KEY) || {}
+    }
+
+    static addMarkThread(_tid) {
+        GMK.setValue(this.TASK_KEY, { ...this.getMarkList(), ...{ [_tid]: {} } })
+    }
+
+    static deleteMarkedThread(_tid) {
+        let markList = this.getMarkList();
+        delete markList[_tid];
+        GMK.setValue(this.TASK_KEY, markList)
+    }
+
+    static isMarked(_tid) {
+        return this.getMarkList().hasOwnProperty(_tid)
+    }
+
+    static getThreadStatus(_tid) {
+        return this.getMarkList()[_tid];
+    }
+
+    static getAllThreadStatus() {
+        return this.getMarkList();
+    }
+
+    static setThreadStatus(_tid, threadStatus) {
+        GMK.setValue(this.TASK_KEY, {
+            ...this.getMarkList(),
+            [_tid]: threadStatus
+        });
+    }
+}
 
 //##############################################################
 // 功能
 //##############################################################
 
-function loadingBoughtPostWithoutRefresh(target = document) {
+function buyRefresh_free(target = document) {
     let buyButtons = target.querySelectorAll(".quote.jumbotron>.btn.btn-danger")
     buyButtons.forEach(button => {
         // 获取GET购买地址
@@ -211,28 +289,21 @@ function loadingBoughtPostWithoutRefresh(target = document) {
             let btn = e.target;
             btn.setAttribute("value", "正在购买……请稍等………");
             try {
-                fetch(url,
-                    {
-                        credentials: 'include',
-                        mode: "no-cors"
-                    })
+                fetch(url, FETCH_CONFIG)
                     .then(resp => resp.text())
                     .then(text => {
                         if (!text.includes("操作完成")) {
-                            alert("购买失败！");
+                            toast("购买失败！", ToastType.DANGER);
                             return;
                         }
                         let threadID = postContainer.getAttribute("tid");
                         let pg = postContainer.getAttribute("page");
                         let resultURL = `./read.php?tid=${threadID}&page=${pg}`;
-                        fetch(resultURL, {
-                            credentials: 'include',
-                            mode: "no-cors"
-                        }).then(resp => resp.text())
+                        fetch(resultURL, FETCH_CONFIG).then(resp => resp.text())
                             .then(html => {
                                 let dummy = document.createElement("html");
                                 dummy.innerHTML = html;
-                                if (GM_getValue("hidePostImage")) {
+                                if (GMK.getValue("hidePostImage")) {
                                     hidePostImage(dummy);
                                 }
                                 let purchased = dummy.querySelector("#" + post_id);
@@ -246,7 +317,7 @@ function loadingBoughtPostWithoutRefresh(target = document) {
                     });
 
             } catch (error) {
-                alert(`发送请求出错，购买失败！\n${error}`);
+                toast(`发送请求出错，购买失败！\n${error}`, ToastType.DANGER);
                 console.log('Request Failed', error);
             }
         })
@@ -255,141 +326,193 @@ function loadingBoughtPostWithoutRefresh(target = document) {
     });
 }
 
+function hideImg(img) {
+    // 避免折叠论坛表情
+    const emojiPathReg = /images\/post\/smile\//;
+    if (img.getAttribute("src").match(emojiPathReg)) {
+        return
+    }
+    // 避免折叠论坛自带的文件图标
+    const fileIconPathReg = /images\/colorImagination\/file\//;
+    if (img.getAttribute("src").match(fileIconPathReg)) {
+        return
+    }
+
+    // 避免重复处理
+    let p = img.parentNode;
+    if (p.getAttribute("class") === "spp-img-mask") return;
+
+    // 如果开启了按需加载
+    if (GMK.getValue("loadImageOnDemand")) {
+        img.dataset.src = img.getAttribute("src");
+        img.setAttribute("src", "")
+    }
+
+    // 如果图片的父元素是A标签，去掉它
+    if (img.parentNode.tagName === "A") img.parentNode.replaceWith(img);
+    // 创建包裹元素
+    let wrapper = document.createElement('div');
+    wrapper.setAttribute("class", "spp-img-mask");
+    wrapper.style.display = "grid";
+    wrapper.style.gridTemplateRows = "auto auto";
+    wrapper.style.justifyItems = "center";
+
+    // 将父元素下的图片元素替换成包裹元素
+    img.parentNode.replaceChild(wrapper, img);
+
+    // 将图片元素当成子元素放入包裹元素
+    wrapper.appendChild(img);
+
+    img.style.width = "100%";
+
+    // 添加类名
+    img.setAttribute("class", "spp-thread-imgs spp-hide");
+
+    // 包裹元素样式
+    wrapper.style.borderStyle = "dashed";
+    wrapper.style.width = "auto";
+    wrapper.style.height = "20";
+    wrapper.style.textAlign = "center";
+    wrapper.style.verticalAlign = "center";
+    wrapper.style.cursor = "pointer";
+
+    // 创建遮罩小人儿表情
+    let icon_hide = document.createElement("img");
+    icon_hide.setAttribute("src", "images/post/smile/smallface/face106.gif");
+
+    let icon_show = document.createElement("img");
+    icon_show.setAttribute("src", "images/post/smile/smallface/face109.gif");
+
+
+    // 创建遮罩文本
+    let tip = document.createElement("span");
+    let tip_text = document.createElement("span");
+    tip_text.innerText = "看看是啥";
+
+    // 凑一堆儿来
+    tip.appendChild(icon_hide);
+    tip.appendChild(icon_show);
+    tip.appendChild(tip_text);
+
+    // 添加类名
+    icon_hide.setAttribute("class", "spp-img-mask-icon-hide");
+    icon_show.setAttribute("class", "spp-img-mask-icon-show spp-hide");
+    tip.setAttribute("class", "ssp-img-mask-text");
+
+    // 插入元素
+    wrapper.insertBefore(tip, img);
+    // 防止点击图片打开新窗口
+    document.querySelector(".spp-thread-imgs").addEventListener("click", e => e.preventDefault());
+    // 事件监听
+    wrapper.addEventListener("click", (e) => {
+        e.stopPropagation();
+        // console.log(e.target);
+        // console.log(e.currentTarget);
+        let img = e.currentTarget.querySelector(".spp-thread-imgs");
+        img.classList.toggle("spp-hide");
+        // 按需加载
+        if (GMK.getValue("loadImageOnDemand") && !img.classList.contains("spp-hide")) {
+            let loading = document.createElement("div");
+            loading.innerHTML = `<div class="spp-loading-animation">
+                <div class="dot1"></div>
+                <div class="dot2"></div>
+                <div class="dot3"></div>
+            </div>`;
+            loading = loading.firstChild;
+            img.parentNode.append(loading);
+            img.setAttribute("src", img.dataset.src);
+            waitForImageToLoad(img).then(() => {
+                loading.parentNode.removeChild(loading);
+            });
+        }
+        e.currentTarget.querySelector(".spp-img-mask-icon-hide").classList.toggle("spp-hide");
+        e.currentTarget.querySelector(".spp-img-mask-icon-show").classList.toggle("spp-hide");
+    });
+
+}
+
+function hideAvatar(avatar) {
+    let src = avatar.getAttribute("src");
+    if (src === "images/face/none.gif") return;
+
+    // 如果开启了按需加载
+    if (GMK.getValue("loadImageOnDemand")) {
+        avatar.dataset.src = avatar.getAttribute("src");
+        avatar.setAttribute("src", "")
+    }
+
+    // 创建包裹元素
+    let wrapper = document.createElement('div');
+    wrapper.setAttribute("class", "spp-avatar-mask");
+    wrapper.style.minWidth = "162px";
+    wrapper.style.minHeight = "162px";
+    wrapper.style.display = "grid";
+    wrapper.style.justifyItems = "center";
+    wrapper.style.alignItems = "center";
+
+    // 创建一个假头像
+    let fakeAvatarElement = document.createElement("img");
+    fakeAvatarElement.setAttribute("src", "images/face/none.gif");
+    fakeAvatarElement.style.borderStyle = "dashed";
+    fakeAvatarElement.style.borderRadius = "3";
+    fakeAvatarElement.style.borderWidth = "3px";
+    fakeAvatarElement.style.borderColor = "Orange";
+
+    // 替换包裹元素
+    avatar.parentNode.replaceChild(wrapper, avatar);
+
+    // 将假头像和真头像插到包裹元素中
+    wrapper.appendChild(avatar);
+    wrapper.appendChild(fakeAvatarElement);
+
+    // 隐藏真头像
+    avatar.classList.add("spp-hide");
+
+    // 设置类名
+    avatar.classList.add("spp-avatar-real");
+    fakeAvatarElement.classList.add("spp-avatar-fake");
+
+    // 事件监听
+    wrapper.addEventListener("mouseenter", (e) => {
+        e.stopPropagation();
+        e.currentTarget.querySelector(".spp-avatar-fake").classList.add("spp-hide");
+        e.currentTarget.querySelector(".spp-avatar-real").classList.remove("spp-hide");
+        // 按需加载
+        if (GMK.getValue("loadImageOnDemand") && !avatar.classList.contains("spp-hide")) {
+            let loading = document.createElement("div");
+            loading.innerHTML = `<div class="spp-loading-animation">
+                <div class="dot1"></div>
+                <div class="dot2"></div>
+                <div class="dot3"></div>
+            </div>`;
+            loading = loading.firstChild;
+            e.currentTarget.append(loading);
+            avatar.setAttribute("src", avatar.dataset.src);
+            waitForImageToLoad(avatar).then(() => {
+                loading.parentNode.removeChild(loading);
+            });
+        }
+    });
+
+    wrapper.addEventListener("mouseleave", (e) => {
+        e.stopPropagation();
+        e.currentTarget.querySelector(".spp-avatar-fake").classList.remove("spp-hide");
+        e.currentTarget.querySelector(".spp-avatar-real").classList.add("spp-hide");
+        e.currentTarget.querySelectorAll(".spp-loading-animation").forEach(ele => ele.parentNode.removeChild(ele));
+    });
+
+
+}
+
 function hidePostImage(target = document) {
     let thread_user_post_images = target.querySelectorAll(".t5.t2 .r_one img");
 
-    thread_user_post_images.forEach(img => {
-        // 避免折叠论坛表情
-        const emojiPathReg = /images\/post\/smile\//;
-        if (img.getAttribute("src").match(emojiPathReg)) {
-            return
-        }
-        // 避免折叠论坛自带的文件图标
-        const fileIconPathReg = /images\/colorImagination\/file\//;
-        if (img.getAttribute("src").match(fileIconPathReg)) {
-            return
-        }
-
-        // 避免重复处理
-        let p = img.parentNode;
-        if (p.getAttribute("class") === "spp-img-mask") return;
-
-        // 创建包裹元素
-        let wrapper = document.createElement('div');
-        wrapper.setAttribute("class", "spp-img-mask");
-        wrapper.style.display = "grid";
-        wrapper.style.gridTemplateColumns = "auto";
-
-        // 将父元素下的图片元素替换成包裹元素
-        img.parentNode.replaceChild(wrapper, img);
-
-        // 将图片元素当成子元素放入包裹元素
-        wrapper.appendChild(img);
-
-        // 隐藏图片
-        img.style.display = "none";
-        img.style.textAlign = "center";
-
-        // 添加类名
-        img.setAttribute("class", "spp-thread-imgs");
-
-        // 包裹元素样式
-        wrapper.style.borderStyle = "dashed";
-        wrapper.style.width = "auto";
-        wrapper.style.height = "20";
-        wrapper.style.textAlign = "center";
-        wrapper.style.verticalAlign = "center";
-
-        // 创建遮罩小人儿表情
-        let icon_hide = document.createElement("img");
-        icon_hide.setAttribute("src", "images/post/smile/smallface/face106.gif");
-
-        let icon_show = document.createElement("img");
-        icon_show.setAttribute("src", "images/post/smile/smallface/face109.gif");
-        icon_show.style.display = "none";
-
-        // 创建遮罩文本
-        let tip = document.createElement("span");
-        let tip_text = document.createElement("span");
-        tip_text.innerText = "看看是啥";
-
-        // 凑一堆儿来
-        tip.appendChild(icon_hide);
-        tip.appendChild(icon_show);
-        tip.appendChild(tip_text);
-
-        // 添加类名
-        icon_hide.setAttribute("class", "spp-img-mask-icon-hide");
-        icon_show.setAttribute("class", "spp-img-mask-icon-show");
-        tip.setAttribute("class", "ssp-img-mask-text");
-
-        // 插入元素
-        wrapper.insertBefore(tip, img);
-
-        // 事件监听
-        wrapper.addEventListener("mouseenter", (e) => {
-            e.stopPropagation();
-            e.target.querySelector(".spp-thread-imgs").style.display = "";
-            e.target.querySelector(".spp-img-mask-icon-hide").style.display = "none";
-            e.target.querySelector(".spp-img-mask-icon-show").style.display = "";
-        });
-        wrapper.addEventListener("mouseleave", (e) => {
-            e.stopPropagation();
-            e.target.querySelector(".spp-thread-imgs").style.display = "none";
-            e.target.querySelector(".spp-img-mask-icon-hide").style.display = "";
-            e.target.querySelector(".spp-img-mask-icon-show").style.display = "none";
-        });
-
-
-    });
+    thread_user_post_images.forEach(hideImg);
 }
 
 function hideUserAvatar(target = document) {
     let user_avatars = target.querySelectorAll(".user-pic img");
-    user_avatars.forEach((avatar) => {
-        let src = avatar.getAttribute("src");
-        if (src !== "images/face/none.gif") {
-            // 创建包裹元素
-            let wrapper = document.createElement('div');
-            wrapper.setAttribute("class", "spp-avatar-mask");
-
-            // 创建一个假头像
-            let fakeAvatarElement = document.createElement("img");
-            fakeAvatarElement.setAttribute("src", "images/face/none.gif");
-            fakeAvatarElement.style.borderStyle = "dashed";
-            fakeAvatarElement.style.borderRadius = "3";
-            fakeAvatarElement.style.borderWidth = "3px";
-            fakeAvatarElement.style.borderColor = "Orange";
-
-            // 替换包裹元素
-            avatar.parentNode.replaceChild(wrapper, avatar);
-
-            // 将假头像和真头像插到包裹元素中
-            wrapper.appendChild(avatar);
-            wrapper.appendChild(fakeAvatarElement);
-
-            // 隐藏真头像
-            avatar.style.display = "none";
-
-            // 设置类名
-            fakeAvatarElement.setAttribute("class", "spp-avatar-fake");
-            avatar.setAttribute("class", "spp-avatar-real");
-
-            // 事件监听
-            wrapper.addEventListener("mouseenter", (e) => {
-                e.stopPropagation();
-                e.target.querySelector(".spp-avatar-fake").style.display = "none";
-                e.target.querySelector(".spp-avatar-real").style.display = "";
-            });
-
-            wrapper.addEventListener("mouseleave", (e) => {
-                e.stopPropagation();
-                e.target.querySelector(".spp-avatar-fake").style.display = "";
-                e.target.querySelector(".spp-avatar-real").style.display = "none";
-            });
-
-        }
-    });
+    user_avatars.forEach(hideAvatar);
 }
 
 function dynamicLoadingNextPage(pageType) {
@@ -404,7 +527,7 @@ function dynamicLoadingNextPage(pageType) {
         GetURLDummy(url) {
             this.nextPageDummy = document.createElement("html");
             this.isFetching = true;
-            return fetch(url, {credentials: 'include', mode: "no-cors"})
+            return fetch(url, FETCH_CONFIG)
                 .then(response => response.text())
 
         }
@@ -430,9 +553,11 @@ function dynamicLoadingNextPage(pageType) {
 
 
     function getNextPageUrl() {
-        let pageNum = document.querySelector(".pages b").parentNode;
+        let pageSeq = document.querySelector(".pages b");
+        if (!pageSeq) return null;
+        let pageNum = pageSeq.parentNode;
         let url = pageNum.nextSibling.firstChild.getAttribute("href");
-        if (pageNum.nextSibling.nextSibling.firstChild.getAttribute("class") === "pagesone") return null;
+        if (pageNum.nextSibling.nextSibling.classList.contains("pagesone")) return null;
         if (document.URL.includes(url)) return null;
         return url;
     }
@@ -474,7 +599,7 @@ function dynamicLoadingNextPage(pageType) {
                 p
                     .then(html => {
                         nextPageLoader.nextPageDummy.innerHTML = html
-                        if (GM_getValue("BlockSearchResultFromADForum")) BlockSearchResultFromADForum(nextPageLoader.nextPageDummy);
+                        if (GMK.getValue("blockAdforumSearchResult")) blockAdforumSearchResult(nextPageLoader.nextPageDummy);
                     })
                     .catch(err => {
                         console.error(err);
@@ -525,7 +650,7 @@ function dynamicLoadingNextPage(pageType) {
                     .then(html => {
                         nextPageLoader.nextPageDummy.innerHTML = html;
                         threadAddAnchorAttribute(nextPageLoader.nextPageDummy, page + 1, fid);
-                        if (GM_getValue("highlightLastViewedThread")) highlightLastViewedThread(nextPageLoader.nextPageDummy);
+                        if (GMK.getValue("highlightViewedThread")) highlightViewedThread(nextPageLoader.nextPageDummy);
                     })
                     .catch(err => {
                         console.error(err);
@@ -575,9 +700,10 @@ function dynamicLoadingNextPage(pageType) {
                     .then(html => {
                         nextPageLoader.nextPageDummy.innerHTML = html
                         postAddAnchorAttribute(nextPageLoader.nextPageDummy, page + 1, tid);
-                        if (GM_getValue("loadingBoughtPostWithoutRefresh")) loadingBoughtPostWithoutRefresh(nextPageLoader.nextPageDummy);
-                        if (GM_getValue("hidePostImage")) hidePostImage(nextPageLoader.nextPageDummy);
-                        if (GM_getValue("hideUserAvatar")) hideUserAvatar(nextPageLoader.nextPageDummy);
+                        if (GMK.getValue("buyRefresh_free")) buyRefresh_free(nextPageLoader.nextPageDummy);
+                        if (GMK.getValue("hidePostImage")) hidePostImage(nextPageLoader.nextPageDummy);
+                        if (GMK.getValue("hideUserAvatar")) hideUserAvatar(nextPageLoader.nextPageDummy);
+                        if (GMK.getValue("hoistingResourcePost")) hoistingResourcePost(nextPageLoader.nextPageDummy);
                     })
                     .catch(err => {
                         console.error(err);
@@ -664,9 +790,9 @@ function dynamicLoadingNextPage(pageType) {
 async function automaticTaskCollection() {
 
     function setUIDsValue(uid, value) {
-        let tmp = GM_getValue("LastAutomaticTaskCollectionDate") || {};
+        let tmp = GMK.getValue("LastAutomaticTaskCollectionDate") || {};
         tmp[uid] = value;
-        GM_setValue("LastAutomaticTaskCollectionDate", tmp);
+        GMK.setValue("LastAutomaticTaskCollectionDate", tmp);
     }
 
     if (document.querySelector("#login_0")) {
@@ -677,9 +803,9 @@ async function automaticTaskCollection() {
     let uid = document.querySelector("#menu_profile .ul2").innerHTML.match(/u\.php\?action-show-uid-(\d+)\.html/)[1];
     let uname = document.querySelector("#user-login a").innerText;
 
-    console.log(GM_getValue("LastAutomaticTaskCollectionDate"));
-    let lastTime = GM_getValue("LastAutomaticTaskCollectionDate") ?
-        (parseInt(GM_getValue("LastAutomaticTaskCollectionDate")[uid]) || 0) : 0;
+    console.log(GMK.getValue("LastAutomaticTaskCollectionDate"));
+    let lastTime = GMK.getValue("LastAutomaticTaskCollectionDate") ?
+        (parseInt(GMK.getValue("LastAutomaticTaskCollectionDate")[uid]) || 0) : 0;
     console.log(`${uname}[${uid}] 上次：${new Date(lastTime).toLocaleDateString()} ${new Date(lastTime).toLocaleTimeString()}`);
 
 
@@ -688,14 +814,11 @@ async function automaticTaskCollection() {
         return;
     }
 
-    let sleep = (ms) => {
-        return new Promise(resolve => setTimeout(resolve, ms))
-    }
 
     async function forumTask(pageURL, selector, jobType) {
         let dummy = await fetch(
             pageURL,
-            {credentials: 'include', mode: "no-cors"})
+            FETCH_CONFIG)
             .then(response => response.text())
             .then(html => {
                 let dummy = document.createElement("html");
@@ -711,11 +834,11 @@ async function automaticTaskCollection() {
             let taskURL = `/plugin.php?H_name=tasks&action=ajax&actions=${jobType}&cid=${jobID}&nowtime=${new Date().getTime()}&verify=${verifyhash}`;
 
 
-            await fetch(taskURL, {credentials: 'include', mode: "no-cors"})
+            await fetch(taskURL, FETCH_CONFIG)
                 .then(response => response.text())
                 .then(html => {
                         console.log(html);
-                        if (html.includes("success\t")) alert(html.match(/!\[CDATA\[success\t(.+)]]>/)[1]);
+                        if (html.includes("success\t")) toast(html.match(/!\[CDATA\[success\t(.+)]]>/)[1], ToastType.SUCCESS);
                     }
                 )
                 .catch(err => console.error(err));
@@ -744,7 +867,7 @@ async function automaticTaskCollection() {
 
 }
 
-function BlockSearchResultFromADForum(target = document) {
+function blockAdforumSearchResult(target = document) {
     target.querySelectorAll(".tr3.tac").forEach(ele => {
         let forum = ele.childNodes[2];
         if (forum.firstChild.getAttribute("href").match(/fid-17[1-4]/)) {
@@ -753,86 +876,572 @@ function BlockSearchResultFromADForum(target = document) {
     });
 }
 
-function BackToTop() {
+function createFloatDraggableButton(text, GMKey, style) {
+    let btn = document.createElement("button");
+    let main = document.getElementById("main");
+    main.appendChild(btn);
 
-    function isInViewPort(ele) {
-        const viewWidth = window.innerWidth;
-        const viewHeight = window.innerHeight;
-        const {
-            top,
-            right,
-            bottom,
-            left,
-        } = ele.getBoundingClientRect();
+    btn.innerText = text;
+    btn.setAttribute("id", "spp-float-draggable-button");
+    btn.setAttribute("draggable", "true");
+    btn.style.display = "block";
+    btn.style.position = "fixed";
+    btn.style.background = "#efefef";
+    btn.style.zIndex = "99";
+    btn.style.width = "30px";
+    btn.style.padding = "10";
+    btn.style.borderRadius = "1px";
 
-        return (
-            top >= 0
-            && left >= 0
-            && right <= viewWidth
-            && bottom <= viewHeight
-        );
+    if (style) {
+        for (const k in style) {
+            btn.style[k] = style[k];
+        }
     }
 
-    let backToTop = document.createElement("div");
+    let GM_style;
+    if (GMKey) GM_style = GMK.getValue(GMKey);
+    if (GM_style) {
+        for (const k in GM_style) {
+            btn.style[k] = GM_style[k];
+        }
+    }
 
-    backToTop.innerHTML = "<button>回到顶部</button>";
-    backToTop.setAttribute("id", "spp-back-to-top");
-    backToTop.setAttribute("draggable", "true");
-    backToTop.style.display = "block";
-    backToTop.style.position = "fixed";
-    backToTop.style.background = "#efefef";
-    backToTop.style.left = "calc(50vw + 470px)";
-    backToTop.style.bottom = "40px";
-    backToTop.style.left = GM_getValue("backToTop_left") ? GM_getValue("backToTop_left") : "calc(50vw + 470px)";
-    backToTop.style.bottom = GM_getValue("backToTop_bottom") ? GM_getValue("backToTop_bottom") : "40px";
-    backToTop.style.zIndex = "99";
-    backToTop.style.width = "30px";
-    backToTop.style.padding = "10";
-    backToTop.style.borderRadius = "5px";
-    let main = document.getElementById("main");
-    main.appendChild(backToTop);
-    backToTop.addEventListener("click", (e) => {
-        e.stopPropagation();
-        window.scrollTo({top: 0, behavior: "smooth"});
-    });
-    let offsetX;
-    let offsetY;
+    return btn;
 
-    backToTop.addEventListener("dragstart", (e) => {
-        e.stopPropagation();
-        // console.log(`e.offset:${e.offsetX},${e.offsetY}`);
-        // 得到鼠标在元素内的偏移
-        offsetX = e.offsetX;
-        offsetY = e.offsetY;
-    });
+}
 
-    backToTop.addEventListener("dragend", (e) => {
-        e.stopPropagation();
-        // alert("?");
-        console.log(`e.client:${e.clientX},${e.clientY}`);
-        // 获得丄的交叉点坐标
-        let _50vw = window.innerWidth / 2;
-        let _100vh = window.innerHeight;
+function mark() {
+    if (document.location.href.includes("/read.php")) {
 
-        // 计算出相对丄交叉点的偏移量
-        let offsetLeft = e.clientX - offsetX - _50vw;
-        let offsetBottom = _100vh - e.clientY - (e.target.clientHeight - offsetY);
+        const GREY = "linear-gradient(to top, rgb(184 184 184), rgb(188 188 188))";
+        const BLACK = "linear-gradient(to top, #313131,#000000)";
+        const GMKey = "Style_markPlusPlus";
 
+        let markButton = createFloatDraggableButton(
+            MppManager.isMarked(tid) ? "MARKED" : "MARK",
+            GMKey,
+            {
+                left: "calc(50vw + 470px)",
+                top: "234px",
+                background: MppManager.isMarked(tid) ? GREY : BLACK,
+                color: "white",
+                fontWeight: "bold",
+                outline: "none",
+                border: "none",
+                borderRadius: "3px",
+                width: "30px",
+                opacity: MppManager.isMarked(tid) ? "0.4" : "0.8",
+                cursor: "pointer",
+            },
+        );
+
+        let dragStart = {};
+        let dragEnd = {};
         // 防止拖到视口以外了
-        if (_50vw + offsetLeft >= 0
-            && _50vw + offsetLeft + e.target.clientWidth <= window.innerWidth
-            && offsetBottom > 0
-            && offsetBottom + e.target.clientHeight <= window.innerHeight
-        ) {
-            backToTop.style.left = `calc(50vw + ${offsetLeft}px)`;
-            backToTop.style.bottom = `${offsetBottom}px`;
+        AddIntersectionObserver(([entry]) => {
+            if (!entry.isIntersecting) {
+                // console.log('LEAVE');
+                markButton.style.left = dragStart['saved']['left'];
+                markButton.style.top = dragStart['saved']['top'];
+            }
+        }, markButton)
 
-            GM_setValue("backToTop_left", backToTop.style.left);
-            GM_setValue("backToTop_bottom", backToTop.style.bottom);
+        markButton.addEventListener("click", async evt => {
+            evt.stopPropagation();
+
+            if (MppManager.isMarked(tid)) {
+                MppManager.deleteMarkedThread(tid);
+                evt.target.style.background = BLACK;
+                evt.target.innerText = "MARK";
+                evt.target.style.opacity = "0.8";
+            } else {
+                MppManager.addMarkThread(tid);
+                evt.target.style.background = GREY;
+                evt.target.innerText = "MARKED";
+                evt.target.style.opacity = "0.4";
+                // 第一次mark就先把基本内容给收录了
+                let threadStatus = {};
+
+                threadStatus['page'] = 1;
+                threadStatus['lastFetchTime'] = 0;
+                threadStatus['maxPage'] = totalpage;
+                threadStatus['title'] = document.querySelector('.crumbs-item.current strong>a').textContent;
+
+                MppManager.setThreadStatus(tid, threadStatus);
+                console.log(MppManager.getMarkList());
+            }
+
+
+        });
+
+        markButton.addEventListener("contextmenu", openStatus);
+
+        markButton.addEventListener("dragstart", (e) => {
+            e.stopPropagation();
+            dragStart = {
+                clientX: e.clientX,
+                clientY: e.clientY,
+                saved: {
+                    left: e.target.style.left,
+                    top: e.target.style.top,
+                }
+            }
+        });
+
+        markButton.addEventListener("dragend", (e) => {
+            e.stopPropagation();
+            // 获得丅的交叉点坐标
+            let startX = window.innerWidth / 2;
+            let startY = 0;
+            dragEnd = {
+                clientX: e.clientX,
+                clientY: e.clientY,
+            }
+            let newLeft = parseFloat(e.target.style.left.match(/(-?\d+)px/)[1]) + (dragEnd.clientX - dragStart.clientX)
+            let newTop = parseFloat(e.target.style.top.match(/(-?\d+)px/)[1]) + (dragEnd.clientY - dragStart.clientY);
+
+
+            e.target.style.left = `calc(50vw + ${newLeft}px)`;
+            e.target.style.top = `${newTop}px`;
+
+            let tmp = {
+                ...GMK.getValue(GMKey),
+                ...{
+                    left: `calc(50vw + ${newLeft}px)`,
+                    top: `${newTop}px`,
+                }
+            };
+            GMK.setValue(GMKey, tmp);
+        });
+    }
+
+    document.querySelector("#main").insertAdjacentHTML("afterbegin", `
+   <style>
+        .mpp{
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            z-index: 2000000;
+        }
+        .mpp-mask{
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: black;
+            opacity: 0.5;
+            user-select: none;
+            z-index: 1000000;
+        }
+        .mpp-container{
+            background: #eeeeee;
+            display:grid;
+            grid-template-areas:
+            "title"
+            "main";
+            grid-template-rows: 28px auto;
+            grid-gap: 10px;
+            min-height: 80vh;
+            max-height: 80vh;
+            width: 600px;
+            overflow-y: hidden;
+        }
+        .mpp-title{
+            grid-area: title;
+            background: #111111;
+            border-left: black;
+            border-right: black;
+            text-align: center;
+            font-weight: bold;
+            height: 100%;
+            color: white;
+            padding-top: 5px;
+            margin: 0;
         }
 
+        .mpp-main{
+            grid-area: main;
+            height: 75vh;
+            overflow-y: scroll;
+            overflow-x: hidden;
+
+        }
+
+
+        .spp-hide{
+            display: none;
+        }
+
+        .mpp-accordion{
+            width: 100%; 
+            border: none;
+            outline: none;
+            background-color: whitesmoke;
+            text-align: left;
+            padding: 10px 10px;
+            font-size: 12px;
+            /*font-weight: bold;*/
+            color: #444;
+            cursor: pointer;
+            transition: background-color 0.2s linear;
+            display: inline-grid;
+            grid-template-columns:1fr 4fr 1fr 1.5fr 1fr;
+            align-items: center;
+            justify-items: center;
+            margin-bottom: 4px;
+            box-shadow: 1px 2px 2px #AAAAAA;
+            
+        }
+        .mpp-header{
+            width: 100%;
+            display: inline-grid;
+            grid-template-columns:1fr 4fr 1fr 1.5fr 1fr; 
+            padding: 10px 10px;
+            font-size: 12px;
+            align-items: center;
+            justify-items: left;
+        }
+
+        /*.mpp-accordion-plus{ */
+        /*    font-size: 14px;*/
+        /*    float: right;*/
+        /*}*/
+
+        button.mpp-accordion:before{
+            content: '无';
+            font-size: 10px;
+            color: gray;
+        }
+        button.mpp-accordion.have-content:before{
+            content: '+';
+            font-size: 14px;
+            font-weight: bold;
+            color: black;
+        }
+        button.mpp-accordion.have-content.mpp-accordion-is-open:before{
+            content: '-';
+            font-size: 14px;
+            font-weight: bold;
+            color: black;
+        }
+        button.mpp-accordion:hover, button.mpp-accordion.mpp-accordion-is-open{
+            background-color: #ddd;
+        }
+
+        .mpp-accordion-content{
+            background: #eeeeee;
+            border-left: 1px solid whitesmoke;
+            border-right: 1px solid whitesmoke;
+            padding: 0 20px;
+            margin-bottom: 1px;
+            max-height: 0;
+            overflow: hidden;
+            font-size: 10px;
+        }
+
+        .mpp-accordion-content.mpp-accordion-is-open{
+            max-height: fit-content;
+        }
+
+        .mpp-sticky{
+            position: sticky;
+            top: 0;
+        }
+
+        .mpp-accordion-op{
+            display: flex;
+
+            justify-content: end;
+            align-content: center;
+        }
+        .mpp-accordion-op a{
+            padding: 5px;
+            margin-left: 20px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        a.mpp-delete{
+            text-align: right;
+            color: brown;
+        }
+        
+        a.mpp-sell{
+            color: blueviolet;
+            font-weight: bold;
+        }
+        
+        a.mpp-hyperlink{
+            color: blue;
+        }
+        a.mpp-hash{
+            color: forestgreen;
+        }
+        
+        .mpp-content-cell.mpp-content-title,
+        .mpp-content-cell.mpp-content-last-fetch-time{
+            justify-self: left; 
+        }
+        .mpp-content-cell.mpp-content-last-fetch-time{
+            padding-left: 1em;
+        }
+        a.mpp-status{
+            /*font-weight: bold;*/
+            color: dodgerblue;
+            cursor:pointer;
+        }
+        span.mpp-content-result{
+            justify-self: center;
+        }
+
+    </style> 
+    <div class="mpp-mask spp-hide"></div> 
+    <div class="mpp spp-hide">
+            <div class="mpp-container">
+                <p class="mpp-title">我的Mark（保持此窗口开启才会运行）</p>
+                <div class="mpp-main">
+                    <div class="mpp-accordion-op mpp-sticky">
+                        <a class="mpp-accordion-expand-all">全部展开</a>
+                        <a class="mpp-accordion-collapse-all">全部折叠</a>  
+                    </div>
+                    <div class="mpp-header" >
+                        <span class="mpp-header-cell mpp-content-result">结果</span> 
+                        <span class="mpp-header-cell mpp-content-title" >帖子标题</span> 
+                        <span class="mpp-header-cell">更新页数</span> 
+                        <span class="mpp-header-cell mpp-content-last-fetch-time">更新时间</span> 
+                        <a class="mpp-delete mpp-content-cell" data-tid="1274464"></a>
+                    </div>
+                    <div class="mpp-content-container">
+                        
+                    </div>
+                </div> 
+            </div> 
+        </div>
+    
+`);
+    document.querySelector('.fl>.gray2>.fl:first-child').insertAdjacentText("beforeend",
+        `, `);
+    document.querySelector('.fl>.gray2>.fl:first-child').insertAdjacentHTML("beforeend",
+        `<a class="mpp-status">我的MARK</a>`);
+    document.querySelector(".mpp-accordion-expand-all").addEventListener("click", evt => {
+
+        document.querySelectorAll(".mpp-accordion").forEach(ele => {
+            if (!ele.nextElementSibling.querySelectorAll("p>a").length) return;
+            if (!ele.classList.contains(" mpp-accordion-is-open")) ele.classList.add("mpp-accordion-is-open");
+        });
+        document.querySelectorAll(".mpp-accordion-content").forEach(ele => {
+            if (!ele.querySelectorAll("p>a").length) return;
+            if (!ele.classList.contains("mpp-accordion-is-open")) ele.classList.add("mpp-accordion-is-open");
+            ele.style.maxHeight = ele.scrollHeight + 'px';
+        });
+    });
+    document.querySelector(".mpp-accordion-collapse-all").addEventListener("click", evt => {
+        document.querySelectorAll(".mpp-accordion").forEach(ele => {
+            if (ele.classList.contains("mpp-accordion-is-open")) ele.classList.remove("mpp-accordion-is-open")
+        });
+        document.querySelectorAll(".mpp-accordion-content").forEach(ele => {
+            if (ele.classList.contains("mpp-accordion-is-open")) ele.classList.remove("mpp-accordion-is-open")
+            ele.style.maxHeight = null;
+        });
     });
 
+    // 用于tab之间广播通讯，只允许一个tab运行mark++
+    const bc = new BroadcastChannel("Soul++:MppTaskStart");
+
+
+    let refreshID;
+
+
+    // 自己不会接到
+    bc.onmessage = async msg => {
+        console.log('BroadcastChannel:', msg.data);
+        if (msg.data.includes("mppTaskStart")) {
+            closeMenu(null)
+        }
+    };
+
+
+    function insertDataHTML() {
+        let container = document.querySelector(".mpp-content-container");
+        let threadsStatus = MppManager.getAllThreadStatus()
+        let insertHTML = ``;
+        for (const [_tid, status] of Object.entries(threadsStatus)) {
+            let posts = "";
+            if (status['sell']) status["sell"].forEach(ele => posts += `<p><a class="mpp-sell" href="${ele}" target="_blank">[出售]${ele}</a></p>`);
+            if (status['hyperlink']) status["hyperlink"].forEach(ele => posts += `<p><a class="mpp-hyperlink" href="${ele}" target="_blank">[超链]${ele}</a></p>`);
+            if (status["magnetOrMiaochuan"]) status["magnetOrMiaochuan"].forEach(ele => posts += `<p><a class="mpp-hash" href="${ele}" target="_blank">[磁力或秒传]${ele}</a></p>`);
+            let button = container.querySelector(`button.mpp-accordion[data-tid="${_tid}"`);
+            if (button) button.classList.remove("have-content");
+            let content = container.querySelector(`div.mpp-accordion-content[data-tid="${_tid}"`);
+            console.log(button ? button.classList.toString() : "mpp-accordion");
+            console.log(content ? content.classList.toString() : "mpp-accordion-content");
+            // <span class="mpp-content-cell mpp-accordion-plus">${posts === "" ? "" : button.classList.contains("") ? "-" : "+"}</span>
+            insertHTML += `
+            <button type="button" class="${button ? button.classList.toString() : "mpp-accordion"} ${posts ? "have-content" : ""}" data-tid="${_tid}">
+                <a 
+                class="mpp-content-cell mpp-content-title"  
+                href="/read.php?tid=${_tid}" 
+                target="_blank"
+                >${status["title"].slice(0, 20)}${status["title"].length > 20 ? "..." : ""}</a> 
+                <span class="mpp-content-cell">${status["page"] || 0} / ${status["maxPage"]}</span> 
+                <span class="mpp-content-cell mpp-content-last-fetch-time">${status["lastFetchTime"] ? `${Math.round((getTimeStamp() - parseInt(status["lastFetchTime"])) / 1000)} 秒之前` : '尚未检查'}</span> 
+                <a class="mpp-delete mpp-content-cell" data-tid="${_tid}">删除</a>
+            </button>
+
+            <div class="${content ? content.classList.toString() : "mpp-accordion-content"}" data-tid="${_tid}">
+                ` + posts + `
+            </div>
+            `;
+
+        }
+        container.innerHTML = insertHTML;
+        document.querySelectorAll("button.mpp-accordion").forEach(ele => {
+            ele.addEventListener("click", evt => {
+                evt.stopPropagation();
+                if (!evt.currentTarget.nextElementSibling.querySelectorAll("p>a").length) return;
+                let btn = evt.currentTarget;
+                let content = btn.nextElementSibling;
+                btn.classList.toggle("mpp-accordion-is-open");
+                content.classList.toggle("mpp-accordion-is-open");
+                content.style.maxHeight = content.classList.contains("mpp-accordion-is-open") ? content.scrollHeight + 'px' : null;
+                // evt.currentTarget.querySelector(".mpp-accordion-plus").textContent = content.classList.contains("mpp-accordion-is-open") ? "-" : "+";
+            });
+
+        });
+        document.querySelectorAll(".mpp-delete.mpp-content-cell").forEach(ele => {
+            ele.addEventListener("click", evt => {
+                evt.stopPropagation();
+                evt.preventDefault();
+                if (!confirm("删除后无法撤销，确定删除？")) return;
+                const parentButton = evt.currentTarget.closest("button")
+                const content = parentButton.nextElementSibling;
+                parentButton.remove();
+                content.remove();
+                MppManager.deleteMarkedThread(evt.currentTarget.dataset.tid);
+
+            })
+        });
+    }
+
+    function openStatus(evt) {
+        evt.stopPropagation();
+        evt.preventDefault();
+        // 显示数据
+        insertDataHTML();
+
+        // 显示菜单
+        let sppMenu = document.querySelector(".mpp");
+        sppMenu.classList.remove("spp-hide");
+        // 显示遮罩
+        let sppMenuMask = document.querySelector(".mpp-mask");
+        sppMenuMask.classList.remove("spp-hide");
+        // 防止滚动到菜单后面的页面
+        document.body.style.overflow = "hidden";
+
+        bc.postMessage('mppTaskStart');
+        sessionStorage.setItem("Soul++:MppTaskID", `${setInterval(mppTask, 5000, bc)}`);
+        refreshID = setInterval(insertDataHTML, 1000);
+    }
+
+    function closeMenu(evt) {
+        if (evt) evt.stopPropagation();
+        document.body.style.overflow = null;
+        let sppMenu = document.querySelector(".mpp");
+        sppMenu.classList.add("spp-hide");
+        let sppMenuMask = document.querySelector(".mpp-mask");
+        sppMenuMask.classList.add("spp-hide");
+        clearInterval(parseInt(sessionStorage.getItem("Soul++:MppTaskID")));
+        clearInterval(refreshID);
+    }
+
+    document.querySelector("a.mpp-status").addEventListener("click", openStatus)
+
+    document.querySelector(".mpp-mask").addEventListener("click", closeMenu);
+
+
+}
+
+function backToTop() {
+
+    const GMKey = "Style_backToTop";
+    let backToTopButton = createFloatDraggableButton(
+        "回到顶部",
+        GMKey,
+        {
+            left: "calc(50vw + 470px)",
+            bottom: "40px",
+            background: "linear-gradient(to top, #eeeeee,#ffffff)",
+            color: "black",
+            fontWeight: "bold",
+            outline: "none",
+            border: "none",
+            borderRadius: "3px",
+            width: "30px",
+            opacity: "80%",
+            cursor: "pointer",
+        }
+    );
+
+    let dragStart = {};
+    let dragEnd = {};
+
+    // 防止拖到视口以外了
+    AddIntersectionObserver(([entry]) => {
+        if (!entry.isIntersecting) {
+            console.log('LEAVE');
+            backToTopButton.style.left = dragStart.saved.left;
+            backToTopButton.style.bottom = dragStart.saved.bottom;
+        }
+    }, backToTopButton)
+
+    backToTopButton.addEventListener("click", (e) => {
+        e.stopPropagation();
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+
+    backToTopButton.addEventListener("dragstart", (e) => {
+        e.stopPropagation();
+
+        dragStart = {
+            clientX: e.clientX,
+            clientY: e.clientY,
+            saved: {
+                left: e.target.style.left,
+                bottom: e.target.style.bottom,
+            }
+        }
+    });
+
+    backToTopButton.addEventListener("dragend", (e) => {
+        e.stopPropagation();
+        // 获得丅的交叉点坐标
+        let startX = window.innerWidth / 2;
+        let startY = window.innerHeight;
+        dragEnd = {
+            clientX: e.clientX,
+            clientY: e.clientY,
+        }
+        let newLeft = parseFloat(e.target.style.left.match(/(-?\d+)px/)[1]) + (dragEnd.clientX - dragStart.clientX);
+        // bottom从下往上算的，所以要减
+        let newBottom = parseFloat(e.target.style.bottom.match(/(-?\d+)px/)[1]) - (dragEnd.clientY - dragStart.clientY);
+
+
+        e.target.style.left = `calc(50vw + ${newLeft}px)`;
+        e.target.style.bottom = `${newBottom}px`;
+
+        let tmp = {
+            ...GMK.getValue(GMKey),
+            ...{
+                left: `calc(50vw + ${newLeft}px)`,
+                bottom: `${newBottom}px`,
+            }
+        };
+        GMK.setValue(GMKey, tmp);
+
+
+    });
 
 }
 
@@ -858,34 +1467,449 @@ function threadAddAnchorAttribute(target, pg, forumID) {
     });
 }
 
-function highlightLastViewedThread(target = document) {
-    target.querySelectorAll("a").forEach(ele => {
-         
-        let threadContainer = ele.closest(".tr3.t_one");
-        if (!threadContainer) return;
-        let tid = threadContainer.getAttribute("tid");
+function highlightViewedThread() {
 
-        function recordTid(event) {
-            event.stopPropagation();
-            sessionStorage.setItem("lastViewedThread", tid);
-        }
+    function removeCurrent() {
+        let prev = document.querySelector(".spp-last-viewed-thread");
+        if (prev) prev.classList.remove("spp-last-viewed-thread");
+    }
 
-        ele.addEventListener("click", recordTid);
-        // ele.addEventListener("dragend", recordTid);
-        console.log(`上次浏览的帖子tid：${sessionStorage.getItem("lastViewedThread")}`);
-        if (ele.getAttribute("id") === `a_ajax_${sessionStorage.getItem("lastViewedThread")}`) {
-            ele.parentNode.parentNode.parentNode.style.backgroundColor = "#deeeff";
+    function setLastViewed() {
+        let tmp = GMK.getValue("Soul++:lastViewedThread") || {};
+        tmp[fid] = tid;
+        GMK.setValue("Soul++:lastViewedThread", tmp);
+    }
 
-            document.addEventListener('readystatechange', (event) => {
-                if (document.readyState === "complete") {
+    function setViewed() {
+        let tmp = GMK.getValue("Soul++:viewedThreads") || {};
+        tmp[fid] = tmp[fid] || [];
+        if (!tmp[fid].includes(tid)) tmp[fid].push(tid);
+        GMK.setValue("Soul++:viewedThreads", tmp);
+    }
 
-                    history.scrollRestoration = "manual";
-                    ele.scrollIntoView({behavior: "auto", block: "center"});
+    // 帖子阅读页面处理
+    if ((document.location.href.includes("/read.php"))) {
+        // 直接打开页面的话不会触发visibilitychange事件
+        if (!document.hidden) setViewed();
+        // 当visibilitychange触发时，hidden代表用户关闭或者离开了当前页面
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden) {
+                setLastViewed();
+            } else {
+                setViewed();
+            }
+        });
+    }
+    // 帖子列表页面处理
+    else if ((document.location.href.includes("/thread.php") || document.location.href.includes("/thread_new.php"))) {
+        // 在帖子列表页面会主动滚动到最后浏览的帖子的位置
+        document.addEventListener('readystatechange', (event) => {
+            if (document.readyState === "complete") {
+                history.scrollRestoration = "manual";
+                let ele = document.querySelector(".spp-last-viewed-thread");
+                if (!ele) return;
+                ele.scrollIntoView({ behavior: "auto", block: "center" });
+            }
+        });
 
+        // 主动更新帖子列表页
+        // GM_addValueChangeListener(name, function(name, old_value, new_value, remote) {})
+        GMK.addValueChangeListener("Soul++:viewedThreads", (_name, oldVal, newVal, remote) => {
+            console.log(`本版块已阅帖：${newVal[fid]}`);
+            document.querySelectorAll(".tr3.t_one").forEach(ele => {
+                if (newVal[fid].includes(ele.getAttribute("tid"))) {
+                    ele.querySelector("h3 a").classList.add("spp-viewed-thread");
                 }
             });
+        })
+        GMK.addValueChangeListener("Soul++:lastViewedThread", (_name, oldVal, newVal, remote) => {
+            // 新记录中当前fid下正在阅读的tid和DOM树中一致的话则返回
+            if (document.querySelector(".spp-last-viewed-thread").getAttribute("tid") === newVal[fid]) return;
+            console.log(`正在本版块阅读新帖：${newVal[fid]}`);
+            removeCurrent();
+            document.querySelectorAll(".tr3.t_one").forEach(ele => {
+                if (ele.getAttribute("tid") === newVal[fid]) {
+                    ele.classList.add("spp-last-viewed-thread");
+                    ele.scrollIntoView({ behavior: "auto", block: "center" });
+                }
+            });
+        })
+
+        // 将已经阅读过的帖子改成灰色
+        let readedThreads = GMK.getValue("Soul++:viewedThreads") || {};
+        let thisForumReadedThreads = readedThreads[fid] || [];
+        console.log(`当前版块已读帖子：${thisForumReadedThreads}`);
+        document.querySelectorAll("h3 a").forEach(ele => {
+            let container = ele.closest(".tr3.t_one");
+            if (!container) return;
+
+            if (thisForumReadedThreads.includes(container.getAttribute("tid"))) {
+                console.log(`${container.getAttribute("tid")} 已读`);
+                ele.classList.add("spp-viewed-thread");
+            }
+            if (ele.getAttribute("id") === `a_ajax_${GMK.getValue("Soul++:lastViewedThread")[fid]}`) {
+                container.classList.add("spp-last-viewed-thread");
+            }
+            ele.addEventListener("click", e => {
+                e.stopPropagation();
+                removeCurrent();
+                e.target.closest(".tr3.t_one").classList.add("spp-last-viewed-thread");
+            });
+        });
+    }
+}
+
+function createSettingMenu() {
+    let menuBox = document.createElement("div");
+    document.querySelector("#main").prepend(menuBox);
+
+    let menuButton = document.createElement("li");
+    let a = document.createElement("a");
+    a.innerText = "Soul++";
+    a.style.cursor = "pointer";
+    menuButton.appendChild(a);
+    a.addEventListener("click", e => {
+        e.stopPropagation();
+        // 读取数据更显选项显示
+        document.querySelectorAll(".spp-accordion-content").forEach(ele => {
+            ele.querySelectorAll(".spp-menu-checkbox").forEach(ele => {
+                let checkbox = ele.querySelector("input");
+                if (checkbox) {
+                    let key = checkbox.dataset.funckey;
+                    checkbox.checked = GMK.getValue(key);
+                }
+            })
+        });
+
+        // 显示菜单
+        let sppMenu = document.querySelector(".spp-menu");
+        sppMenu.classList.remove("spp-hide");
+        // 显示遮罩
+        let sppMenuMask = document.querySelector(".spp-menu-mask");
+        sppMenuMask.classList.remove("spp-hide");
+        // 防止滚动到菜单后面的页面
+        document.body.style.overflow = "hidden";
+
+    });
+    document.querySelector("#guide").prepend(menuButton);
+
+    menuBox.outerHTML = `
+<div class="spp-menu-mask spp-hide"></div>
+<div class="spp-menu spp-hide">
+    <div class="spp-menu-container">
+        <p class="spp-menu-title">Soul++ 设置</p>
+        <div class="spp-menu-main">
+            <div class="spp-menu-accordion-op spp-sticky">
+                <a class="spp-menu-accordion-support-me" style="grid-column-start: 1">支持作者</a>
+                <a class="spp-menu-accordion-expand-all" style="grid-column-start: 4">全部展开</a>
+                <a class="spp-menu-accordion-collapse-all" style="grid-column-start: 5">全部折叠</a>
+            </div>
+            <button type="button" class="spp-accordion spp-accordion-is-open">🔄 免刷新</button>
+            <div class="spp-accordion-content spp-accordion-is-open">
+                <div class="spp-menu-checkbox"><label><input data-funcKey="buyRefresh_free" type="checkbox" id="buy-refresh-free">购买免刷新</label></div>
+            </div>
+
+
+            <button type="button" class="spp-accordion spp-accordion-is-open">♾️ 无缝加载</button>
+            <div class="spp-accordion-content spp-accordion-is-open">
+                <div class="spp-menu-checkbox"><label><input data-funcKey="dynamicLoadingThreads" type="checkbox" id="dynamic-load-posts">无缝加载板块帖子列表</label></div>
+                <div class="spp-menu-checkbox"><label><input data-funcKey="dynamicLoadingPosts" type="checkbox" id="dynamic-load-threads">无缝加载贴内楼层列表</label></div>
+                <div class="spp-menu-checkbox"><label><input data-funcKey="dynamicLoadingSearchResult" type="checkbox" id="dynamic-load-search-result">无缝加载搜索页结果</label></div>
+                <div class="spp-menu-checkbox"><label><input data-funcKey="dynamicLoadingPicWall" type="checkbox" id="dynamic-load-pic-wall">无缝加载图墙模式帖子</label></div>
+            </div>
+
+            <button type="button" class="spp-accordion spp-accordion-is-open">🛑 屏蔽</button>
+            <div class="spp-accordion-content spp-accordion-is-open">
+                <div class="spp-menu-checkbox"><label><input data-funcKey="blockAdforumSearchResult" type="checkbox" id="block-adforum-search-result">屏蔽网赚区搜索结果</label></div>
+            </div>
+
+            <button type="button" class="spp-accordion spp-accordion-is-open">🔞 SFW安全模式</button>
+            <div class="spp-accordion-content spp-accordion-is-open">
+                <div class="spp-menu-checkbox"><label><input data-funcKey="hidePostImage" type="checkbox" id="hide-post-image">折叠贴内图片（点击虚线框 展开/折叠 图片）</label></div>
+                <div class="spp-menu-checkbox"><label><input data-funcKey="hideForumRules" type="checkbox" id="hide-chaguan-poster">折叠板块公告（其实板块公告右边有个小箭头，我只是帮你们点了一下）</label></div>
+                <div class="spp-menu-checkbox"><label><input data-funcKey="hideUserAvatar" type="checkbox" id="hide-user-avatar">替换用户头像为默认（鼠标滑入查看）</label></div>
+                <div class="spp-menu-checkbox"><label><input data-funcKey="loadImageOnDemand" type="checkbox" id="load-image-on-demand">按需加载头像、图片（展开后才开始加载）</label></div>
+            </div>
+            <button type="button" class="spp-accordion spp-accordion-is-open">🔖 mark++</button>
+            <div class="spp-accordion-content spp-accordion-is-open">
+                <div class="spp-menu-checkbox"><label><input data-funcKey="markPlusPlus" type="checkbox" id="mark-plus-plus">开启MARK++</label></div>
+                <div class="spp-menu-checkbox"><label class="spp-menu-description">- 打开后查看帖子页面右边会出现MARK按钮（可拖到任意位置）</label></div>
+                <div class="spp-menu-checkbox"><label class="spp-menu-description">- 点击MARK之后，当前帖子会加入到“我的MARK”列表里</label></div>
+                <div class="spp-menu-checkbox"><label class="spp-menu-description">- 在论坛左上方可以找到“我的MARK”入口（蓝色），右键点击MARK按钮也可以打开“我的MARK”</label></div>
+                <div class="spp-menu-checkbox"><label class="spp-menu-description">- 保持打开“我的MARK”窗口，脚本会以5秒/帖的频率检查MARK列表</label></div>
+            </div>
+            <button type="button" class="spp-accordion spp-accordion-is-open">💠 其它</button>
+            <div class="spp-accordion-content spp-accordion-is-open">
+                <div class="spp-menu-checkbox"><label><input data-funcKey="automaticTaskCollection" type="checkbox" id="automatic-task-collection">自动领取和完成论坛任务</label></div>
+                <div class="spp-menu-checkbox"><label><input data-funcKey="hoistingResourcePost" type="checkbox" id="hoisting-resource-post">将当前页包含[购买/秒传/磁力链/超链]的楼层提升到前面</label></div>
+                <div class="spp-menu-checkbox"><label><input data-funcKey="replaceAllDomainToTheSame" type="checkbox" id="replace-all-plus-to-the-same">统一替换所有plus链接为当前正在使用的域名</label></div>
+                <div class="spp-menu-checkbox"><label><input data-funcKey="highlightViewedThread" type="checkbox" id="highlight-viewed-threads">标记已阅读过的帖子</label></div>
+            </div>
+            <button type="button" class="spp-accordion spp-danger">❗</button>
+            <div class="spp-accordion-content spp-danger-content">
+                <button class="spp-btn-danger" data-funcKey="resetAll" id="spp-reset-all">清空所有设置</button>
+            </div>
+            <button type="button" class="spp-accordion spp-danger">❗</button>
+            <div class="spp-accordion-content spp-danger-content">
+                <button class="spp-btn-danger" data-funcKey="resetAll" id="spp-reset-all">清空所有设置</button>
+            </div>
+
+        </div>
+        <div class="spp-menu-op-zone">
+            <button id="spp-menu-close"><img src="images/post/smile/smallface/face099.jpg"/> 我好了</button>
+        </div>
+    </div>
+</div>
+ 
+`;
+
+    (function () {
+        function closeMenu(evt) {
+            evt.stopPropagation();
+            document.body.style.overflow = null;
+            let sppMenu = document.querySelector(".spp-menu");
+            sppMenu.classList.add("spp-hide");
+            let sppMenuMask = document.querySelector(".spp-menu-mask");
+            sppMenuMask.classList.add("spp-hide");
+            document.location.reload();
+
+        }
+
+        window.addEventListener("keydown", evt => {
+            if (evt.key === "Escape") closeMenu(evt);
+        });
+
+        document.querySelectorAll(".spp-menu-checkbox input").forEach(ele => {
+            ele.addEventListener("change", evt => {
+                GMK.setValue(evt.currentTarget.dataset.funckey, evt.currentTarget.checked);
+            });
+        });
+
+        document.querySelector("#spp-menu-close").addEventListener("click", closeMenu);
+        document.querySelector(".spp-menu-mask").addEventListener("click", closeMenu);
+        document.querySelector("#spp-reset-all").addEventListener("click", evt => {
+            evt.stopPropagation();
+
+            if (confirm(
+                `
+                【警告】
+                这将会清空你在所有的数据和设置，包括：
+                - 已读的帖子
+                - 可拖放按钮的位置
+                - 已经MARK过的帖子
+                
+                你确定要这样做？`
+            )) {
+                GMK.listValues().forEach(vName => {
+                    console.log(vName);
+                    GMK.deleteValue(vName);
+                });
+                console.log(GMK.listValues());
+                document.location.reload();
+            }
+        });
+
+        document.querySelector(".spp-menu-accordion-support-me").addEventListener("click", evt => {
+            evt.stopPropagation();
+            let img = document.createElement("img");
+            img.style.background = "none";
+            img.style.boxShadow = "none";
+            img.style.borderRadius = "10px";
+            img.style.width = "300px";
+            img.style.height = "435px";
+            img.src = 'https://cdn.jsdelivr.net/gh/FetchTheMoon/UserScript/images/RedEnvelope.jpg';
+            let toast = Toastify({
+                node: img,
+                duration: 9999999,
+                close: true,
+                gravity: "top", // `top` or `bottom`
+                position: "center", // `left`, `center` or `right`
+                stopOnFocus: true, // Prevents dismissing of toast on hover
+                style: {
+                    background:"none",
+                    boxShadow:"none",
+                },
+                onClick: function () {
+                    toast.hideToast();
+                }
+            });
+            toast.showToast();
+        });
+        document.querySelector(".spp-menu-accordion-expand-all").addEventListener("click", evt => {
+
+            document.querySelectorAll(".spp-accordion").forEach(ele => {
+                if (ele.classList.contains("spp-danger")) return;
+                if (!ele.classList.contains(" spp-accordion-is-open")) ele.classList.add("spp-accordion-is-open");
+            });
+            document.querySelectorAll(".spp-accordion-content").forEach(ele => {
+                if (ele.classList.contains("spp-danger-content")) return;
+                if (!ele.classList.contains("spp-accordion-is-open")) ele.classList.add("spp-accordion-is-open");
+                ele.style.maxHeight = ele.scrollHeight + 'px';
+            });
+        });
+        document.querySelector(".spp-menu-accordion-collapse-all").addEventListener("click", evt => {
+            document.querySelectorAll(".spp-accordion").forEach(ele => {
+                if (ele.classList.contains("spp-accordion-is-open")) ele.classList.remove("spp-accordion-is-open")
+            });
+            document.querySelectorAll(".spp-accordion-content").forEach(ele => {
+                if (ele.classList.contains("spp-accordion-is-open")) ele.classList.remove("spp-accordion-is-open")
+                ele.style.maxHeight = null;
+            });
+        });
+        document.querySelectorAll("button.spp-accordion").forEach(ele => {
+            ele.addEventListener("click", evt => {
+                evt.stopPropagation();
+                let btn = evt.target;
+                let content = btn.nextElementSibling;
+                btn.classList.toggle("spp-accordion-is-open");
+                content.classList.toggle("spp-accordion-is-open");
+                content.style.maxHeight = content.classList.contains("spp-accordion-is-open") ? content.scrollHeight + 'px' : null;
+            });
+
+        });
+    }());
+}
+
+function replaceAllDomainToTheSame() {
+
+
+    const arr = [...document.querySelectorAll("a")];
+    const domains = [
+        "spring-plus.net",
+        "summer-plus.net",
+        "soul-plus.net",
+        "south-plus.net",
+        "north-plus.net",
+        "snow-plus.net",
+        "level-plus.net",
+        "white-plus.net",
+        "imoutolove.me",
+        "south-plus.org",
+    ];
+    const checker = value => domains.some(element => value.href.includes(element));
+
+    arr.filter(checker).filter(ele => !ele.href.includes(window.location.hostname)).forEach(ele => {
+        console.log("替换链接:", ele);
+        let newURL = new URL(ele.href);
+        newURL.hostname = window.location.hostname;
+        ele.href = newURL.href;
+    });
+
+
+}
+
+function MutationObserverProcess() {
+    function callback(mutationList, observer) {
+        mutationList.forEach((mutation) => {
+            mutation.addedNodes.forEach(ele => {
+                if (ele.tagName === "IMG") {
+                    ele.setAttribute("loading", "lazy");
+                    if (ele.classList.contains("spp-mutation-processed")) return
+
+                    function hide(confirmSelector, handler) {
+                        const postContainer = ele.closest(confirmSelector);
+                        if (!postContainer) return
+                        handler(ele);
+                        ele.classList.add("spp-mutation-processed");
+                    }
+
+                    if (document.location.href.includes("/read.php")) {
+                        if (GMK.getValue("hideUserAvatar")) hide(".user-pic", hideAvatar)
+                        if (GMK.getValue("hidePostImage")) hide(".t5.t2 .r_one", hideImg)
+                    }
+                }
+            });
+        });
+
+
+    }
+
+    let observerOptions = {
+        childList: true,  // 观察目标子节点的变化，是否有添加或者删除
+        attributes: true, // 观察属性变动
+        subtree: true     // 观察后代节点，默认为 false
+    }
+
+    let observer = new MutationObserver(callback);
+    observer.observe(document.documentElement, observerOptions);
+}
+
+async function mppTask() {
+
+    // 先查询页数没到最后一页的
+    let markedList = Object.entries(MppManager.getMarkList()).filter(e => {
+        return e[1]['maxPage'] - e[1]['page'] > 0
+    });
+    // 如果都到最后一页了，就按上次查询时间距今最远的来
+    if (!markedList.length) {
+        markedList = Object.entries(MppManager.getMarkList())
+            .sort((f, s) => {
+                return f[1]['lastFetchTime'] - s[1]['lastFetchTime']
+            });
+    }
+    console.log(markedList);
+    if (!markedList.length) return;
+    let [_tid, threadStatus] = markedList[0];
+    let maxPage = threadStatus['maxPage'] || 1;
+    let currentPage = threadStatus["page"] || 1;
+
+    const dummy = await getPage(`/read.php?tid=${_tid}&page=${currentPage}`, true);
+    const m = dummy.innerHTML.match(/var totalpage = parseInt\('(\d+)'\)/);
+    if (m) maxPage = parseInt(m[1]);
+    const allPosts = [...dummy.querySelectorAll(".t5.t2")];
+    // 是否拿出顶楼
+    if (currentPage === 1) allPosts.shift();
+    threadStatus["sell"] = threadStatus["sell"] || [];
+    threadStatus["hyperlink"] = threadStatus["hyperlink"] || [];
+    threadStatus["magnetOrMiaochuan"] = threadStatus["magnetOrMiaochuan"] || [];
+    threadStatus['title'] = dummy.querySelector('.crumbs-item.current strong>a').textContent;
+    threadStatus['lastFetchTime'] = getTimeStamp();
+    threadStatus['maxPage'] = maxPage;
+    threadStatus["page"] += currentPage < maxPage ? 1 : 0;
+    const getPid = (post) => {
+        return post.previousSibling.getAttribute("name");
+    }
+    allPosts.forEach(post => {
+
+        let u = `/read.php?tid=${_tid}&page=${currentPage}#${getPid(post)}`;
+        if (post.querySelector(".quote.jumbotron")) {
+            if (!threadStatus["sell"].includes(u)) threadStatus["sell"].push(u)
+        } else if (post.querySelector(".tpc_content a")) {
+            if (!threadStatus["hyperlink"].includes(u)) threadStatus["hyperlink"].push(u);
+        } else if (post.querySelector(".tpc_content").textContent.match(/^[0-9a-fA-F]{20,}/mg)) {
+            if (!threadStatus["magnetOrMiaochuan"].includes(u)) threadStatus["magnetOrMiaochuan"].push(u);
         }
     });
+
+
+    if (MppManager.isThreadExist(_tid)) MppManager.setThreadStatus(_tid, threadStatus);
+    console.log(threadStatus);
+
+
+}
+
+function hoistingResourcePost(target = document) {
+    if (document.location.href.includes("#")) return;
+    let fatherNode = target.querySelector("form[name=delatc]");
+    let allPosts = [...target.querySelectorAll(".t5.t2")];
+
+    // 是否拿出顶楼
+    const insertPosition = page === 1 ? allPosts.shift() : target.querySelector("input[name=tid]");
+    const resourcePosts = allPosts.filter(post =>
+        post.querySelector(".quote.jumbotron")
+        || post.querySelector(".tpc_content a")
+        || post.querySelector(".tpc_content").textContent.match(/^[0-9a-fA-F]{20,}/mg)
+    ).reverse();
+    resourcePosts.forEach(ele => insertPosition.after(ele));
+
+}
+
+function AddIntersectionObserver(callback, element) {
+    const obs = new window.IntersectionObserver(callback, {
+        root: null,
+        threshold: 0.5,
+    })
+    obs.observe(element);
 }
 
 //##############################################################
@@ -893,72 +1917,294 @@ function highlightLastViewedThread(target = document) {
 //##############################################################
 (function () {
 
+    GMK.addStyle(`<style>
+    .spp-last-viewed-thread{
+        background: #deeeff;
+    }
+    .spp-viewed-thread{
+        color: #bbbbbb;
+    }
+    .spp-hide{
+        display: none;
+    }
+    
+    
+        
+    .spp-menu{
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        background: white; 
+        z-index: 2000000; 
+    }
+    .spp-menu-mask{
+        position: fixed;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background: black;
+        opacity: 0.5;
+        user-select: none;
+        z-index: 1000000; 
+    }
+    .spp-menu-container{
+        background: #eeeeee;
+        display:grid;
+        grid-template-areas:
+            "title"
+            "main"
+            "op";
+        grid-template-rows: 28px auto 40px;
+        grid-gap: 10px;
+        min-height: 80vh;
+        max-height: 80vh;
+        width: 600px; 
+    }
+    .spp-menu-title{
+        grid-area: title;
+        background: url(images/colorImagination/bg_topnav.gif) repeat-x #000000;
+        border-left: black;
+        border-right: black;
+        text-align: center;
+        font-weight: bold;
+        height: 100%;
+        color: white;
+        padding-top: 5px;
+        margin: 0;
+    }
+    
+    .spp-menu-main{
+        grid-area: main;
+        height: 70vh;
+        overflow-y: scroll;
+    }
+    
+    /*.spp-menu-op-zone{*/
+    /*    grid-area: op;*/
+    /*    display: grid;*/
+    /*    grid-template-columns: 50% 50%;*/
+    /*}*/
+    
+    .spp-hide{
+        display: none;
+    }
+    
+    button.spp-accordion{
+        width: 100%;
+        border: none;
+        outline: none;
+        background-color: whitesmoke;
+        text-align: left;
+        padding: 10px 10px;
+        font-size: 14px;
+        font-weight: bold;
+        color: #444;
+        cursor: pointer;
+        transition: background-color 0.2s linear;
+    }
+    
+    button.spp-accordion:after{
+        content:'+';
+        font-size: 14px;
+        float: right;
+    }
+    
+    button.spp-accordion.spp-accordion-is-open:after{
+        content: '-';
+    }
+    
+    button.spp-accordion:hover, button.spp-accordion.spp-accordion-is-open{
+        background-color: #ddd;
+    }
+    
+    .spp-accordion-content{
+        background: #eeeeee;
+        border-left: 1px solid whitesmoke;
+        border-right: 1px solid whitesmoke;
+        padding: 0 20px;
+        margin-bottom: 3px;
+        max-height: 0;
+        overflow: hidden;
+        /*transition: all 0.2s ease-in-out;*/
+        font-size: 14px;
+    }
+    
+    .spp-accordion-content.spp-accordion-is-open{
+        max-height: fit-content;
+        /*transition: all 0.2s ease-in-out;*/
+    }
+    
+    .spp-sticky{
+        position: sticky;
+        top: 0;
+    }
+    
+    .spp-menu-accordion-op{
+        display: grid;
+        grid-template-columns: repeat(5,1fr);
+        justify-content: end;
+        align-content: center;
+    }
+    .spp-menu-accordion-op a{
+        padding: 5px;
+        margin-left: 20px;
+        font-size: 12px;
+        cursor: pointer;
+    }
+    
+    .spp-menu-checkbox{
+        margin: 10px;
+    }
+    /*.spp-menu-op-zone{*/
+    
+    /*    display: flex;*/
+    /*    justify-content: space-around;*/
+    /*    align-content: center;*/
+    /*}*/
+    
+    .spp-menu-op-zone button{
+        display: block;
+        width: 100%;
+        height: 100%;
+        background: black;
+        color: white;
+        border: 1px solid black;
+        font-size: 16px;
+        font-family: 宋体,"sans-serif";
+        font-weight: bold;
+        cursor: pointer;
+        
+    }
+    
+    #spp-menu-close{
+       background:linear-gradient(to bottom, #3a3a3a,#000000);
+    }
+     
+    .spp-menu-description{
+        padding-left: 20px;
+        font-size: 12px;
+    }
+    
+    .spp-danger-content{
+        padding: 0;
+    }
+    
+    .spp-btn-danger{
+        display: block;
+        background: crimson;
+        color: whitesmoke;
+        width: 100%;
+        height: 40px;
+        border: none;
+        outline: none;
+        cursor: pointer;
+    }
 
-    registerAllOptions();
-
-    let mainInterval = setInterval(main, 50);
-    let mainStart = (new Date()).getTime();
-
-    function main() {
-
-        // 避免有些外链图一直加载不完，在那转圈圈，让脚本一直无法生效
-        document.querySelectorAll("img").forEach(e => e.setAttribute("loading", "lazy"));
-
-        if ((new Date()).getTime() - mainStart > 20000 || document.readyState === "interactive"
-            || document.readyState === "complete") {
-            clearInterval(mainInterval);
-        } else {
-            return
+        .spp-loading-animation{
+            width:150px;
+            margin:50px auto;
+            text-align: center;
         }
+        .spp-loading-animation >div{
+            width: 18px;
+            height: 18px;
+            border-radius: 100%;
+            display:inline-block;
+            background-color: #af0909;
+            -webkit-animation: dot 1.4s infinite ease-in-out;
+            animation: dot 1.4s infinite ease-in-out;
+            -webkit-animation-fill-mode: both;
+            animation-fill-mode: both;
+        }
+        .spp-loading-animation .dot1{
+            -webkit-animation-delay: -0.30s;
+            animation-delay: -0.30s;
+        }
+        .spp-loading-animation .dot2{
+            -webkit-animation-delay: -0.15s;
+            animation-delay: -0.15s;
+        }
+        @-webkit-keyframes dot {
+            0%, 80%, 100% {-webkit-transform: scale(0.0) }
+            40% { -webkit-transform: scale(1.0) }
+        }
+        @keyframes dot {
+            0%, 80%, 100% {-webkit-transform: scale(0.0) }
+            40% { -webkit-transform: scale(1.0) }
+        }
+    </style>`.replace(/<\/?style>/gm, ""));
+    GMK.addStyle(GMK.getResourceText("TOASTIFY_CSS"));
 
-        //##############################################################
-        // 调试代码
-        //##############################################################
-        // GM_listValues().forEach(vName => {console.log(vName);GM_deleteValue(vName);});
-        // console.log(GM_listValues());
-        // return;
-        //##############################################################
-        BackToTop();
+    console.log(`=======================================
+            Soul++ 已经启动
+=======================================`);
+    // 给所有图片增加懒加载，以及处理图片隐藏
+    MutationObserverProcess();
+
+    // toast("Soul++ 已启动，可以在论坛导航栏进行设置", ToastType.WARNING, 5000);
+    // toast("Soul++ 已启动，可以在论坛导航栏进行设置", ToastType.INFO, 5000);
+    // toast("Soul++ 已启动，可以在论坛导航栏进行设置", ToastType.SUCCESS, 5000);
+    // toast("Soul++ 已启动，可以在论坛导航栏进行设置", ToastType.DANGER, 5000);
+
+    document.addEventListener("readystatechange", evt => {
+        if (!(document.readyState === "interactive")) return;
+        createSettingMenu();
+        backToTop();
 
         if (document.location.href.includes("/read.php")) {
             postAddAnchorAttribute(document, page, tid);
+            if (GMK.getValue("hoistingResourcePost")) {
+                hoistingResourcePost();
+            }
         }
         if (document.location.href.includes("/thread.php")) {
             threadAddAnchorAttribute(document, page, fid);
-        }
-        if (GM_getValue("loadingBoughtPostWithoutRefresh") && document.location.href.includes("/read.php")) {
-            loadingBoughtPostWithoutRefresh();
-        }
-        if (GM_getValue("hidePostImage") && document.location.href.includes("/read.php")) {
-            hidePostImage();
-        }
-        if (GM_getValue("hideUserAvatar") && document.location.href.includes("/read.php")) {
-            hideUserAvatar();
-        }
-        if (GM_getValue("dynamicLoadingThreads") && (document.location.href.includes("/thread.php"))) {
-            dynamicLoadingNextPage(PageType.THREADS_PAGE);
-        }
-        if (GM_getValue("dynamicLoadingPicWall") && document.location.href.includes("/thread_new.php")) {
-            dynamicLoadingNextPage(PageType.PIC_WALL_PAGE);
-        }
-        if (GM_getValue("dynamicLoadingPosts") && document.location.href.includes("/read.php")) {
-            dynamicLoadingNextPage(PageType.POSTS_PAGE);
-        }
-        if (GM_getValue("dynamicLoadingSearchResult") && document.location.href.includes("/search.php")) {
-            dynamicLoadingNextPage(PageType.SEARCH_RESULT);
-        }
-        if (GM_getValue("BlockSearchResultFromADForum") && document.location.href.includes("/search.php")) {
-            BlockSearchResultFromADForum();
-        }
-        if (GM_getValue("automaticTaskCollection")) {
-            automaticTaskCollection();
-        }
-        if (GM_getValue("highlightLastViewedThread") && (document.location.href.includes("/thread.php") || document.location.href.includes("/thread_new.php"))) {
-            highlightLastViewedThread();
+            if (GMK.getValue("hideForumRules")) {
+                document.cookie = "deploy=%09thread%09%0A;"
+                document.querySelector("#cate_thread").style.display = "none";
+            } else {
+                document.cookie = "deploy=;"
+                document.querySelector("#cate_thread").style.display = null;
+            }
         }
 
-    }
-})()
+        if (GMK.getValue("buyRefresh_free") && document.location.href.includes("/read.php")) {
+            buyRefresh_free();
+        }
+        if (GMK.getValue("dynamicLoadingThreads") && (document.location.href.includes("/thread.php"))) {
+            dynamicLoadingNextPage(PageType.THREADS_PAGE);
+        }
+        if (GMK.getValue("dynamicLoadingPicWall") && document.location.href.includes("/thread_new.php")) {
+            dynamicLoadingNextPage(PageType.PIC_WALL_PAGE);
+        }
+        if (GMK.getValue("dynamicLoadingPosts") && document.location.href.includes("/read.php")) {
+            dynamicLoadingNextPage(PageType.POSTS_PAGE);
+        }
+        if (GMK.getValue("dynamicLoadingSearchResult") && document.location.href.includes("/search.php")) {
+            dynamicLoadingNextPage(PageType.SEARCH_RESULT);
+        }
+        if (GMK.getValue("blockAdforumSearchResult") && document.location.href.includes("/search.php")) {
+            blockAdforumSearchResult();
+        }
+        if (GMK.getValue("automaticTaskCollection")) {
+            automaticTaskCollection();
+        }
+        if (GMK.getValue("highlightViewedThread")) {
+            highlightViewedThread();
+        }
+        if (GMK.getValue("replaceAllDomainToTheSame")) {
+            replaceAllDomainToTheSame();
+        }
+        if (GMK.getValue("markPlusPlus")) {
+            mark();
+        }
+
+    });
+
+
+})();
 
 
 
