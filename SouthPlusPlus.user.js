@@ -103,8 +103,8 @@ function toast(info, toastType, time = 3000, close = true) {
     }
     Toastify({
         text: info,
-        duration: 3000,
-        close: true,
+        duration: time,
+        close: close,
         gravity: "bottom", // `top` or `bottom`
         position: "right", // `left`, `center` or `right`
         stopOnFocus: true, // Prevents dismissing of toast on hover
@@ -200,29 +200,8 @@ class GMK {
 
 class MppManager {
     static TASK_KEY = "Soul++:MppThreadsStatus";
-    static TASK_RUNNING = "Soul++:MppTaskRunning"
 
     constructor() {
-    }
-
-    static taskStarted() {
-        return GMK.setValue(this.TASK_RUNNING, true);
-    }
-
-    static taskStopped() {
-        return GMK.setValue(this.TASK_RUNNING, false);
-    }
-
-    static isTaskRunning() {
-        return GMK.getValue(this.TASK_RUNNING);
-    }
-
-    static getLastFetchTime() {
-        let ret = 0;
-        for (const [_tid, status] of Object.entries(this.getMarkList())) {
-            ret = ret < status['lastFetchTime'] ? status['lastFetchTime'] : ret
-        }
-        return ret;
     }
 
     static isThreadExist(_tid) {
@@ -245,10 +224,6 @@ class MppManager {
 
     static isMarked(_tid) {
         return this.getMarkList().hasOwnProperty(_tid)
-    }
-
-    static getThreadStatus(_tid) {
-        return this.getMarkList()[_tid];
     }
 
     static getAllThreadStatus() {
@@ -1416,8 +1391,6 @@ function backToTop() {
     backToTopButton.addEventListener("dragend", (e) => {
         e.stopPropagation();
         // 获得丅的交叉点坐标
-        let startX = window.innerWidth / 2;
-        let startY = window.innerHeight;
         dragEnd = {
             clientX: e.clientX,
             clientY: e.clientY,
@@ -1599,7 +1572,7 @@ function createSettingMenu() {
         <p class="spp-menu-title">Soul++ 设置</p>
         <div class="spp-menu-main">
             <div class="spp-menu-accordion-op spp-sticky">
-                <a class="spp-menu-accordion-support-me" style="grid-column-start: 1">支持作者</a>
+<!--                <a class="spp-menu-accordion-support-me" style="grid-column-start: 1">支持作者</a>-->
                 <a class="spp-menu-accordion-expand-all" style="grid-column-start: 4">全部展开</a>
                 <a class="spp-menu-accordion-collapse-all" style="grid-column-start: 5">全部折叠</a>
             </div>
@@ -2056,6 +2029,9 @@ function AddIntersectionObserver(callback, element) {
     .spp-menu-checkbox{
         margin: 10px;
     }
+    .spp-menu-checkbox input[type="checkbox"]{
+        margin-bottom: 5px;
+    }
     /*.spp-menu-op-zone{*/
     
     /*    display: flex;*/
@@ -2100,7 +2076,9 @@ function AddIntersectionObserver(callback, element) {
         outline: none;
         cursor: pointer;
     }
-
+    .spp-menu-sub-item{
+        padding-left: 20px;
+    }
         .spp-loading-animation{
             width:150px;
             margin:50px auto;
