@@ -1598,9 +1598,9 @@ function createSettingMenu() {
             <button type="button" class="spp-accordion spp-accordion-is-open">🔞 SFW安全模式</button>
             <div class="spp-accordion-content spp-accordion-is-open">
                 <div class="spp-menu-checkbox"><label><input data-funcKey="hidePostImage" type="checkbox" id="hide-post-image">折叠贴内图片（点击虚线框 展开/折叠 图片）</label></div>
+                <div class="spp-menu-checkbox spp-menu-sub-item"><label><input data-funcKey="loadImageOnDemand" type="checkbox" id="load-image-on-demand">按需加载头像、图片（展开后才开始加载）</label></div>
                 <div class="spp-menu-checkbox"><label><input data-funcKey="hideForumRules" type="checkbox" id="hide-chaguan-poster">折叠板块公告（其实板块公告右边有个小箭头，我只是帮你们点了一下）</label></div>
                 <div class="spp-menu-checkbox"><label><input data-funcKey="hideUserAvatar" type="checkbox" id="hide-user-avatar">替换用户头像为默认（鼠标滑入查看）</label></div>
-                <div class="spp-menu-checkbox"><label><input data-funcKey="loadImageOnDemand" type="checkbox" id="load-image-on-demand">按需加载头像、图片（展开后才开始加载）</label></div>
             </div>
             <button type="button" class="spp-accordion spp-accordion-is-open">🔖 mark++</button>
             <div class="spp-accordion-content spp-accordion-is-open">
