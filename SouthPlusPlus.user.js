@@ -1790,17 +1790,17 @@ function MutationObserverProcess() {
         mutationList.forEach((mutation) => {
             mutation.addedNodes.forEach(ele => {
                 if (ele.tagName === "IMG") {
-                    ele.setAttribute("loading", "lazy");
                     if (ele.classList.contains("spp-mutation-processed")) return
-
+                    
                     function hide(confirmSelector, handler) {
                         const postContainer = ele.closest(confirmSelector);
                         if (!postContainer) return
                         handler(ele);
                         ele.classList.add("spp-mutation-processed");
                     }
-
+                    
                     if (document.location.href.includes("/read.php")) {
+                        ele.setAttribute("loading", "lazy");
                         if (GMK.getValue("hideUserAvatar")) hide(".user-pic", hideAvatar)
                         if (GMK.getValue("hidePostImage")) hide(".t5.t2 .r_one", hideImg)
                     }
