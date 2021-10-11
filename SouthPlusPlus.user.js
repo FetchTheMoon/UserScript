@@ -1621,14 +1621,10 @@ function createSettingMenu() {
             <div class="spp-accordion-content spp-danger-content">
                 <button class="spp-btn-danger" data-funcKey="resetAll" id="spp-reset-all">清空所有设置</button>
             </div>
-            <button type="button" class="spp-accordion spp-danger">❗</button>
-            <div class="spp-accordion-content spp-danger-content">
-                <button class="spp-btn-danger" data-funcKey="resetAll" id="spp-reset-all">清空所有设置</button>
-            </div>
 
         </div>
         <div class="spp-menu-op-zone">
-            <button id="spp-menu-close"><img src="images/post/smile/smallface/face099.jpg"/> 我好了</button>
+            <button id="spp-menu-close"><img alt="" src="images/post/smile/smallface/face099.jpg"/> 我好了</button>
         </div>
     </div>
 </div>
