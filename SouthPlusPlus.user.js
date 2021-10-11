@@ -1572,7 +1572,7 @@ function createSettingMenu() {
         <p class="spp-menu-title">Soul++ 设置</p>
         <div class="spp-menu-main">
             <div class="spp-menu-accordion-op spp-sticky">
-<!--                <a class="spp-menu-accordion-support-me" style="grid-column-start: 1">支持作者</a>-->
+                <a class="spp-menu-accordion-support-me" style="grid-column-start: 1">支持作者</a>
                 <a class="spp-menu-accordion-expand-all" style="grid-column-start: 4">全部展开</a>
                 <a class="spp-menu-accordion-collapse-all" style="grid-column-start: 5">全部折叠</a>
             </div>
@@ -1632,29 +1632,33 @@ function createSettingMenu() {
 `;
 
     (function () {
-        function closeMenu(evt) {
+        function closeMenu(evt, saveAndRefresh) {
             evt.stopPropagation();
             document.body.style.overflow = null;
             let sppMenu = document.querySelector(".spp-menu");
             sppMenu.classList.add("spp-hide");
             let sppMenuMask = document.querySelector(".spp-menu-mask");
             sppMenuMask.classList.add("spp-hide");
-            document.location.reload();
+            if (saveAndRefresh) {
+                changes.forEach(e => GMK.setValue(e[0], e[1]))
+                document.location.reload();
+            }
+            changes = [];
 
         }
 
         window.addEventListener("keydown", evt => {
-            if (evt.key === "Escape") closeMenu(evt);
+            if (evt.key === "Escape") closeMenu(evt, false);
         });
-
+        let changes = [];
         document.querySelectorAll(".spp-menu-checkbox input").forEach(ele => {
             ele.addEventListener("change", evt => {
-                GMK.setValue(evt.currentTarget.dataset.funckey, evt.currentTarget.checked);
+                changes.push([evt.currentTarget.dataset.funckey, evt.currentTarget.checked]);
             });
         });
 
-        document.querySelector("#spp-menu-close").addEventListener("click", closeMenu);
-        document.querySelector(".spp-menu-mask").addEventListener("click", closeMenu);
+        document.querySelector("#spp-menu-close").addEventListener("click", evt => closeMenu(evt, true));
+        document.querySelector(".spp-menu-mask").addEventListener("click", evt => closeMenu(evt, false));
         document.querySelector("#spp-reset-all").addEventListener("click", evt => {
             evt.stopPropagation();
 
@@ -1676,9 +1680,23 @@ function createSettingMenu() {
                 document.location.reload();
             }
         });
-
         document.querySelector(".spp-menu-accordion-support-me").addEventListener("click", evt => {
             evt.stopPropagation();
+            let toastTip = Toastify({
+                text: "点我或者点击图片即可关闭",
+                duration: 15000,
+                close: true,
+                gravity: "top", // `top` or `bottom`
+                position: "center", // `left`, `center` or `right`
+                stopOnFocus: true, // Prevents dismissing of toast on hover
+                style: {
+                },
+                onClick: function () {
+                    toastTip.hideToast();
+                    toastRedEnvelop.hideToast();
+                }
+            })
+            toastTip.showToast();
             let img = document.createElement("img");
             img.style.background = "none";
             img.style.boxShadow = "none";
@@ -1686,22 +1704,23 @@ function createSettingMenu() {
             img.style.width = "300px";
             img.style.height = "435px";
             img.src = 'https://cdn.jsdelivr.net/gh/FetchTheMoon/UserScript/images/RedEnvelope.jpg';
-            let toast = Toastify({
+            let toastRedEnvelop = Toastify({
                 node: img,
                 duration: 9999999,
-                close: true,
+                close: false,
                 gravity: "top", // `top` or `bottom`
                 position: "center", // `left`, `center` or `right`
                 stopOnFocus: true, // Prevents dismissing of toast on hover
                 style: {
-                    background:"none",
-                    boxShadow:"none",
+                    background: "none",
+                    boxShadow: "none",
                 },
                 onClick: function () {
-                    toast.hideToast();
+                    toastTip.hideToast();
+                    toastRedEnvelop.hideToast();
                 }
             });
-            toast.showToast();
+            toastRedEnvelop.showToast();
         });
         document.querySelector(".spp-menu-accordion-expand-all").addEventListener("click", evt => {
 
