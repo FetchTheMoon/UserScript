@@ -1880,12 +1880,12 @@ async function mppTask() {
                 return;
             }
             const state = ele.textContent;
-            if (state.includes("悬赏中")) {
-                return `剩余${state.match(/(\d+)小时/)[1]}小时`;
+            if (state.includes("剩余时间:已结束")) {
+                return "悬赏超时";
             } else if (state.includes("悬赏结束")) {
                 return `<a class="mpp-sell" href='/read.php?tid=${_tid}' target="_blank" style="color: #73a5ff">有答案了</a>`;
-            } else if (state.includes("剩余时间:已结束")) {
-                return "悬赏超时";
+            } else if (state.includes("悬赏中")) {
+                return `剩余${state.match(/(\d+)小时/)[1]}小时`;
             }
         }
 
