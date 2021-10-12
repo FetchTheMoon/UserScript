@@ -232,6 +232,11 @@ class MppManager {
             [_tid]: threadStatus
         });
     }
+
+    static getLastFetchTime(_tid) {
+        let res = Object.entries(GMK.getValue(this.TASK_KEY)).filter(e => e[0] === _tid);
+        return res[0][1]["lastFetchTime"];
+    };
 }
 
 //##############################################################
@@ -936,7 +941,7 @@ function mark() {
                 threadStatus['lastFetchTime'] = 0;
                 threadStatus['maxPage'] = totalpage;
                 threadStatus['title'] = document.querySelector('.crumbs-item.current strong>a').textContent;
-
+                threadStatus["markTime"] = new Date().toLocaleDateString();
                 MppManager.setThreadStatus(tid, threadStatus);
                 console.log(MppManager.getMarkList());
             }
@@ -1021,7 +1026,7 @@ function mark() {
             grid-gap: 10px;
             min-height: 80vh;
             max-height: 80vh;
-            width: 600px;
+            width: 900px;
             overflow-y: hidden;
         }
         .mpp-title{
@@ -1063,7 +1068,7 @@ function mark() {
             cursor: pointer;
             transition: background-color 0.2s linear;
             display: inline-grid;
-            grid-template-columns:1fr 4fr 1fr 1.5fr 1fr;
+            grid-template-columns:1fr 4fr 1fr 1fr 1fr 1fr 1fr;
             align-items: center;
             justify-items: center;
             margin-bottom: 4px;
@@ -1073,7 +1078,7 @@ function mark() {
         .mpp-header{
             width: 100%;
             display: inline-grid;
-            grid-template-columns:1fr 4fr 1fr 1.5fr 1fr; 
+            grid-template-columns:1fr 4fr 1fr 1fr 1fr 1fr 1fr; 
             padding: 10px 10px;
             font-size: 12px;
             align-items: center;
@@ -1182,10 +1187,12 @@ function mark() {
                         <a class="mpp-accordion-collapse-all">全部折叠</a>  
                     </div>
                     <div class="mpp-header" >
-                        <span class="mpp-header-cell mpp-content-result">结果</span> 
+                        <span class="mpp-header-cell mpp-content-result"></span> 
                         <span class="mpp-header-cell mpp-content-title" >帖子标题</span> 
-                        <span class="mpp-header-cell">更新页数</span> 
-                        <span class="mpp-header-cell mpp-content-last-fetch-time">更新时间</span> 
+                        <span class="mpp-header-cell">页数</span> 
+                        <span class="mpp-header-cell mpp-content-last-fetch-time">检查时间</span> 
+                        <span class="mpp-header-cell">悬赏状态</span> 
+                        <span class="mpp-header-cell">MARK时间</span> 
                         <a class="mpp-delete mpp-content-cell" data-tid="1274464"></a>
                     </div>
                     <div class="mpp-content-container">
@@ -1264,6 +1271,8 @@ function mark() {
                 >${status["title"].slice(0, 20)}${status["title"].length > 20 ? "..." : ""}</a> 
                 <span class="mpp-content-cell">${status["page"] || 0} / ${status["maxPage"]}</span> 
                 <span class="mpp-content-cell mpp-content-last-fetch-time">${status["lastFetchTime"] ? `${Math.round((getTimeStamp() - parseInt(status["lastFetchTime"])) / 1000)} 秒之前` : '尚未检查'}</span> 
+                <span class="mpp-content-cell">${status["offerState"]}</span> 
+                <span class="mpp-content-cell">${status["markTime"]}</span> 
                 <a class="mpp-delete mpp-content-cell" data-tid="${_tid}">删除</a>
             </button>
 
@@ -1513,7 +1522,7 @@ function highlightViewedThread() {
         // 将已经阅读过的帖子改成灰色
         let readedThreads = GMK.getValue("Soul++:viewedThreads") || {};
         let thisForumReadedThreads = readedThreads[fid] || [];
-        console.log(`当前版块已读帖子：${thisForumReadedThreads}`);
+        // console.log(`当前版块已读帖子：${thisForumReadedThreads}`);
         document.querySelectorAll("h3 a").forEach(ele => {
             let container = ele.closest(".tr3.t_one");
             if (!container) return;
@@ -1693,8 +1702,7 @@ function createSettingMenu() {
                 gravity: "top", // `top` or `bottom`
                 position: "center", // `left`, `center` or `right`
                 stopOnFocus: true, // Prevents dismissing of toast on hover
-                style: {
-                },
+                style: {},
                 onClick: function () {
                     toastTip.hideToast();
                     toastRedEnvelop.hideToast();
@@ -1843,13 +1851,38 @@ async function mppTask() {
     let [_tid, threadStatus] = markedList[0];
     let maxPage = threadStatus['maxPage'] || 1;
     let currentPage = threadStatus["page"] || 1;
-
+    // 该帖子如果最后一页都检查过了, 将查询时间间隔从5秒提升到1分钟
+    if (threadStatus["allPagesChecked"] && (getTimeStamp() - MppManager.getLastFetchTime(_tid) < 60 * 1000)) {
+        console.log(`${threadStatus["title"]} 已经检查完所有页数了, ${(getTimeStamp() - MppManager.getLastFetchTime(_tid)) / 1000}秒后再检查`)
+        return
+    }
     const dummy = await getPage(`/read.php?tid=${_tid}&page=${currentPage}`, true);
     const m = dummy.innerHTML.match(/var totalpage = parseInt\('(\d+)'\)/);
     if (m) maxPage = parseInt(m[1]);
     const allPosts = [...dummy.querySelectorAll(".t5.t2")];
-    // 是否拿出顶楼
-    if (currentPage === 1) allPosts.shift();
+
+    function getOfferState(dummy) {
+        const ele = dummy.querySelector(".tips .s3");
+        if (!ele) return;
+        const state = ele.textContent;
+        if (state.includes("悬赏中")) {
+            return `剩余${state.match(/(\d+)小时/)[1]}小时`;
+        } else if (state.includes("悬赏结束")) {
+            return `<a class="mpp-sell" href='/read.php?tid=${_tid}' target="_blank" style="color: #73a5ff">有答案了</a>`;
+        } else if (state.includes("剩余时间:已结束")) {
+            return "悬赏超时";
+        }
+    }
+
+    if (currentPage === 1) {
+        threadStatus["offerState"] = getOfferState(dummy);
+        allPosts.shift();
+    }
+    // 在第一页获取一下帖子的状态,看看到底有没有结贴
+    if (threadStatus["allPagesChecked"]) {
+        const page1dummy = await getPage(`/read.php?tid=${_tid}&page=1`, true);
+        threadStatus["offerState"] = getOfferState(page1dummy);
+    }
     threadStatus["sell"] = threadStatus["sell"] || [];
     threadStatus["hyperlink"] = threadStatus["hyperlink"] || [];
     threadStatus["magnetOrMiaochuan"] = threadStatus["magnetOrMiaochuan"] || [];
