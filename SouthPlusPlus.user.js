@@ -1636,6 +1636,7 @@ function createSettingMenu() {
                 <div class="spp-menu-checkbox"><label><input data-funcKey="hoistingResourcePost" type="checkbox" id="hoisting-resource-post">将当前页包含[购买/秒传/磁力链/超链]的楼层提升到前面</label></div>
                 <div class="spp-menu-checkbox"><label><input data-funcKey="replaceAllDomainToTheSame" type="checkbox" id="replace-all-plus-to-the-same">统一替换所有plus链接为当前正在使用的域名</label></div>
                 <div class="spp-menu-checkbox"><label><input data-funcKey="highlightViewedThread" type="checkbox" id="highlight-viewed-threads">标记已阅读过的帖子</label></div>
+                <div class="spp-menu-checkbox"><label><input data-funcKey="linkToReplyAndQuote" type="checkbox" id="link-to-reply-and-quote">给[回复第X楼/引用第X楼]增加跳转到该楼层的链接</label></div>
             </div>
             <button type="button" class="spp-accordion spp-danger">❗</button>
             <div class="spp-accordion-content spp-danger-content">
@@ -1808,20 +1809,26 @@ function MutationObserverProcess() {
     function callback(mutationList, observer) {
         mutationList.forEach((mutation) => {
             mutation.addedNodes.forEach(ele => {
+
                 if (ele.tagName === "IMG") {
                     if (ele.classList.contains("spp-mutation-processed")) return
-                    
+
                     function hide(confirmSelector, handler) {
                         const postContainer = ele.closest(confirmSelector);
                         if (!postContainer) return
                         handler(ele);
                         ele.classList.add("spp-mutation-processed");
                     }
-                    
+
                     if (document.location.href.includes("/read.php")) {
                         ele.setAttribute("loading", "lazy");
                         if (GMK.getValue("hideUserAvatar")) hide(".user-pic", hideAvatar)
                         if (GMK.getValue("hidePostImage")) hide(".t5.t2 .r_one", hideImg)
+                    }
+                }
+                if (document.location.href.includes("/read.php") && GMK.getValue("linkToReplyAndQuote")) {
+                    if (ele.title === "复制此楼地址") {
+                        ele.insertAdjacentHTML("beforebegin", `<a name="SPP-${ele.innerText}" id="SPP-${ele.innerText}"></a>`);
                     }
                 }
             });
@@ -2226,6 +2233,9 @@ function AddIntersectionObserver(callback, element) {
             postAddAnchorAttribute(document, page, tid);
             if (GMK.getValue("hoistingResourcePost")) {
                 hoistingResourcePost();
+            }
+            if (GMK.getValue("linkToReplyAndQuote")) {
+                linkToReplyAndQuote();
             }
         }
         if (document.location.href.includes("/thread.php")) {
