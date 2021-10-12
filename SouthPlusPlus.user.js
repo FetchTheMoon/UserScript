@@ -237,6 +237,11 @@ class MppManager {
         let res = Object.entries(GMK.getValue(this.TASK_KEY)).filter(e => e[0] === _tid);
         return res[0][1]["lastFetchTime"];
     };
+
+    static isAllChecked() {
+        let res = Object.entries(GMK.getValue(this.TASK_KEY)).filter(e => !e[1]["allPagesChecked"]);
+        return res.length === 0;
+    };
 }
 
 //##############################################################
@@ -1270,7 +1275,7 @@ function mark() {
                 target="_blank"
                 >${status["title"].slice(0, 20)}${status["title"].length > 20 ? "..." : ""}</a> 
                 <span class="mpp-content-cell">${status["page"] || 0} / ${status["maxPage"]}</span> 
-                <span class="mpp-content-cell mpp-content-last-fetch-time">${status["lastFetchTime"] ? `${Math.round((getTimeStamp() - parseInt(status["lastFetchTime"])) / 1000)} 秒之前` : '尚未检查'}</span> 
+                <span class="mpp-content-cell mpp-content-last-fetch-time">${status["lastFetchTime"] ? `${Math.round((getTimeStamp() - parseInt(status["lastFetchTime"])) / 1000 / 60)} 分钟之前` : '尚未检查'}</span> 
                 <span class="mpp-content-cell">${status["offerState"]}</span> 
                 <span class="mpp-content-cell">${status["markTime"]}</span> 
                 <a class="mpp-delete mpp-content-cell" data-tid="${_tid}">删除</a>
@@ -1327,7 +1332,8 @@ function mark() {
         document.body.style.overflow = "hidden";
 
         bc.postMessage('mppTaskStart');
-        sessionStorage.setItem("Soul++:MppTaskID", `${setInterval(mppTask, 5000, bc)}`);
+        setTimeout(mppTask, 5000);
+        sessionStorage.setItem("Soul++:MppTaskID", 'start');
         refreshID = setInterval(insertDataHTML, 1000);
     }
 
@@ -1338,7 +1344,8 @@ function mark() {
         sppMenu.classList.add("spp-hide");
         let sppMenuMask = document.querySelector(".mpp-mask");
         sppMenuMask.classList.add("spp-hide");
-        clearInterval(parseInt(sessionStorage.getItem("Soul++:MppTaskID")));
+        // clearInterval(parseInt(sessionStorage.getItem("Soul++:MppTaskID")));
+        sessionStorage.setItem("Soul++:MppTaskID", 'stop');
         clearInterval(refreshID);
     }
 
@@ -1834,87 +1841,120 @@ function MutationObserverProcess() {
 }
 
 async function mppTask() {
+    let taskInterval = 5000;
+    await (async function () {
 
-    // 先查询页数没到最后一页的
-    let markedList = Object.entries(MppManager.getMarkList()).filter(e => {
-        return e[1]['maxPage'] - e[1]['page'] > 0
-    });
-    // 如果都到最后一页了，就按上次查询时间距今最远的来
-    if (!markedList.length) {
-        markedList = Object.entries(MppManager.getMarkList())
-            .sort((f, s) => {
-                return f[1]['lastFetchTime'] - s[1]['lastFetchTime']
-            });
-    }
-    console.log(markedList);
-    if (!markedList.length) return;
-    let [_tid, threadStatus] = markedList[0];
-    let maxPage = threadStatus['maxPage'] || 1;
-    let currentPage = threadStatus["page"] || 1;
-    // 该帖子如果最后一页都检查过了, 将查询时间间隔从5秒提升到1分钟
-    if (threadStatus["allPagesChecked"] && (getTimeStamp() - MppManager.getLastFetchTime(_tid) < 60 * 1000)) {
-        console.log(`${threadStatus["title"]} 已经检查完所有页数了, ${(getTimeStamp() - MppManager.getLastFetchTime(_tid)) / 1000}秒后再检查`)
-        return
-    }
-    const dummy = await getPage(`/read.php?tid=${_tid}&page=${currentPage}`, true);
-    const m = dummy.innerHTML.match(/var totalpage = parseInt\('(\d+)'\)/);
-    if (m) maxPage = parseInt(m[1]);
-    const allPosts = [...dummy.querySelectorAll(".t5.t2")];
-
-    function getOfferState(dummy) {
-        const ele = dummy.querySelector(".tips .s3");
-        if (!ele) return;
-        const state = ele.textContent;
-        if (state.includes("悬赏中")) {
-            return `剩余${state.match(/(\d+)小时/)[1]}小时`;
-        } else if (state.includes("悬赏结束")) {
-            return `<a class="mpp-sell" href='/read.php?tid=${_tid}' target="_blank" style="color: #73a5ff">有答案了</a>`;
-        } else if (state.includes("剩余时间:已结束")) {
-            return "悬赏超时";
+        // 先查询页数没到最后一页的
+        let markedList = Object.entries(MppManager.getMarkList()).filter(e => {
+            return e[1]['maxPage'] - e[1]['page'] > 0
+        });
+        // 如果都到最后一页了，就按上次查询时间距今最远的来
+        if (!markedList.length) {
+            markedList = Object.entries(MppManager.getMarkList())
+                .sort((f, s) => {
+                    return f[1]['lastFetchTime'] - s[1]['lastFetchTime']
+                });
         }
+        console.log(markedList);
+        if (!markedList.length) return;
+        if (MppManager.isAllChecked()) taskInterval = 10 * 1000;
+        let [_tid, threadStatus] = markedList[0];
+        let maxPage = threadStatus['maxPage'] || 1;
+        let currentPage = threadStatus["page"] || 1;
+        const dummy = await getPage(`/read.php?tid=${_tid}&page=${currentPage}`, true);
+        const m = dummy.innerHTML.match(/var totalpage = parseInt\('(\d+)'\)/);
+        if (m) maxPage = parseInt(m[1]);
+        const allPosts = [...dummy.querySelectorAll(".t5.t2")];
+
+        function getOfferState(dummy) {
+            const ele = dummy.querySelector(".tips .s3");
+            if (!ele) {
+                console.log("没找到悬赏状态", ele, dummy);
+                return;
+            }
+            const state = ele.textContent;
+            if (state.includes("悬赏中")) {
+                return `剩余${state.match(/(\d+)小时/)[1]}小时`;
+            } else if (state.includes("悬赏结束")) {
+                return `<a class="mpp-sell" href='/read.php?tid=${_tid}' target="_blank" style="color: #73a5ff">有答案了</a>`;
+            } else if (state.includes("剩余时间:已结束")) {
+                return "悬赏超时";
+            }
+        }
+
+        if (currentPage === 1) {
+            threadStatus["offerState"] = getOfferState(dummy);
+            allPosts.shift();
+        }
+        // 在第一页获取一下帖子的状态,看看到底有没有结贴
+        if (threadStatus["allPagesChecked"]) {
+            await sleep(5000); // 否则会遇到提示刷新小于1秒;
+            const page1dummy = await getPage(`/read.php?tid=${_tid}&page=1`, true);
+            threadStatus["offerState"] = getOfferState(page1dummy);
+        }
+        threadStatus["sell"] = threadStatus["sell"] || [];
+        threadStatus["hyperlink"] = threadStatus["hyperlink"] || [];
+        threadStatus["magnetOrMiaochuan"] = threadStatus["magnetOrMiaochuan"] || [];
+        threadStatus['title'] = dummy.querySelector('.crumbs-item.current strong>a').textContent;
+        threadStatus['lastFetchTime'] = getTimeStamp();
+        threadStatus['maxPage'] = maxPage;
+        threadStatus["page"] += currentPage < maxPage ? 1 : 0;
+        const getPid = (post) => {
+            return post.previousSibling.getAttribute("name");
+        }
+        allPosts.forEach(post => {
+
+            let u = `/read.php?tid=${_tid}&page=${currentPage}#${getPid(post)}`;
+            if (post.querySelector(".quote.jumbotron")) {
+                if (!threadStatus["sell"].includes(u)) threadStatus["sell"].push(u)
+            } else if (post.querySelector(".tpc_content a")) {
+                if (!threadStatus["hyperlink"].includes(u)) threadStatus["hyperlink"].push(u);
+            } else if (post.querySelector(".tpc_content").textContent.match(/^[0-9a-fA-F]{20,}/mg)) {
+                if (!threadStatus["magnetOrMiaochuan"].includes(u)) threadStatus["magnetOrMiaochuan"].push(u);
+            }
+        });
+
+
+        threadStatus["allPagesChecked"] = currentPage === maxPage;
+        if (MppManager.isThreadExist(_tid)) MppManager.setThreadStatus(_tid, threadStatus);
+        console.log(threadStatus);
+
+    })();
+    if (sessionStorage.getItem("Soul++:MppTaskID") === 'start') setTimeout(mppTask, taskInterval);
+
+}
+
+function linkToReplyAndQuote(target = document) {
+    if (window.location.hash.includes("#SPP-")) {
+        const ele = document.querySelector(window.location.hash);
+        if (ele) ele.scrollIntoView();
     }
 
-    if (currentPage === 1) {
-        threadStatus["offerState"] = getOfferState(dummy);
-        allPosts.shift();
-    }
-    // 在第一页获取一下帖子的状态,看看到底有没有结贴
-    if (threadStatus["allPagesChecked"]) {
-        const page1dummy = await getPage(`/read.php?tid=${_tid}&page=1`, true);
-        threadStatus["offerState"] = getOfferState(page1dummy);
-    }
-    threadStatus["sell"] = threadStatus["sell"] || [];
-    threadStatus["hyperlink"] = threadStatus["hyperlink"] || [];
-    threadStatus["magnetOrMiaochuan"] = threadStatus["magnetOrMiaochuan"] || [];
-    threadStatus['title'] = dummy.querySelector('.crumbs-item.current strong>a').textContent;
-    threadStatus['lastFetchTime'] = getTimeStamp();
-    threadStatus['maxPage'] = maxPage;
-    threadStatus["page"] += currentPage < maxPage ? 1 : 0;
-    const getPid = (post) => {
-        return post.previousSibling.getAttribute("name");
-    }
-    allPosts.forEach(post => {
+    let allPosts = [...target.querySelectorAll(".t5.t2")];
+    allPosts.forEach(ele => {
+        const quote = ele.querySelector("h6.quote2+div");
+        if (quote) {
+            const floor = parseInt(quote.firstChild.textContent.match(/引用第(\d+)楼/)[1]);
+            const page = Math.ceil(floor / 30);
+            const text = quote.firstChild.textContent.replace(/引用(第\d+楼)(.+)/, `引用<a style="color: dodgerblue" href="/read.php?tid=${tid}&page=${page}#SPP-B${floor}F">$1</a>$2`);
+            quote.removeChild(quote.firstChild);
+            quote.insertAdjacentHTML("afterbegin", text);
 
-        let u = `/read.php?tid=${_tid}&page=${currentPage}#${getPid(post)}`;
-        if (post.querySelector(".quote.jumbotron")) {
-            if (!threadStatus["sell"].includes(u)) threadStatus["sell"].push(u)
-        } else if (post.querySelector(".tpc_content a")) {
-            if (!threadStatus["hyperlink"].includes(u)) threadStatus["hyperlink"].push(u);
-        } else if (post.querySelector(".tpc_content").textContent.match(/^[0-9a-fA-F]{20,}/mg)) {
-            if (!threadStatus["magnetOrMiaochuan"].includes(u)) threadStatus["magnetOrMiaochuan"].push(u);
+        }
+        const reply = ele.querySelector(".h1.fl>.fl");
+        if (reply) {
+            const floor = parseInt(reply.firstChild.textContent.match(/回 (\d+)楼/)[1]);
+            const page = Math.ceil(floor / 30);
+            const text = reply.innerText.replace(/回 (\d+)楼(.+)/, `回 <a style="color: dodgerblue" href="/read.php?tid=${tid}&page=${page}#SPP-B${floor}F">$1楼</a>$2`);
+            reply.innerText = "";
+            reply.insertAdjacentHTML("afterbegin", text);
+
         }
     });
-
-
-    if (MppManager.isThreadExist(_tid)) MppManager.setThreadStatus(_tid, threadStatus);
-    console.log(threadStatus);
-
-
 }
 
 function hoistingResourcePost(target = document) {
     if (document.location.href.includes("#")) return;
-    let fatherNode = target.querySelector("form[name=delatc]");
     let allPosts = [...target.querySelectorAll(".t5.t2")];
 
     // 是否拿出顶楼
