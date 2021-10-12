@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            Soul++
 // @namespace       SoulPlusPlus
-// @version         1.0.0
+// @version         1.0.1
 // @description     提升你的魂+使用体验
 // @run-at          document-start
 // @author          镜花水中捞月
@@ -48,10 +48,6 @@
 // @license         GPL-3.0 License
 // ==/UserScript==
 
-
-//##############################################################
-// 注册选项
-//##############################################################
 'use strict';
 
 const PageType = Object.freeze({
@@ -988,7 +984,12 @@ function mark() {
             GMK.setValue(GMKey, tmp);
         });
     }
-
+    let menuButton = document.createElement("li");
+    let a = document.createElement("a");
+    a.innerText = "我的MARK";
+    a.style.cursor = "pointer";
+    a.classList.add("mpp-status");
+    menuButton.appendChild(a);
     document.querySelector("#main").insertAdjacentHTML("afterbegin", `
    <style>
         .mpp{
@@ -1195,10 +1196,11 @@ function mark() {
         </div>
     
 `);
-    document.querySelector('.fl>.gray2>.fl:first-child').insertAdjacentText("beforeend",
-        `, `);
-    document.querySelector('.fl>.gray2>.fl:first-child').insertAdjacentHTML("beforeend",
-        `<a class="mpp-status">我的MARK</a>`);
+    document.querySelector("#guide").prepend(menuButton);
+    // document.querySelector('.fl>.gray2>.fl:first-child').insertAdjacentText("beforeend",
+    //     `, `);
+    // document.querySelector('.fl>.gray2>.fl:first-child').insertAdjacentHTML("beforeend",
+    //     `<a class="mpp-status">我的MARK</a>`);
     document.querySelector(".mpp-accordion-expand-all").addEventListener("click", evt => {
 
         document.querySelectorAll(".mpp-accordion").forEach(ele => {
@@ -1232,7 +1234,8 @@ function mark() {
     bc.onmessage = async msg => {
         console.log('BroadcastChannel:', msg.data);
         if (msg.data.includes("mppTaskStart")) {
-            closeMenu(null)
+            closeMenu(null);
+            // toast("由于你在别的标签打开了“我的MARK”，此标签的“我的MARK”被关闭了",ToastType.WARNING, 99999 * 1000);
         }
     };
 
@@ -1249,8 +1252,8 @@ function mark() {
             let button = container.querySelector(`button.mpp-accordion[data-tid="${_tid}"`);
             if (button) button.classList.remove("have-content");
             let content = container.querySelector(`div.mpp-accordion-content[data-tid="${_tid}"`);
-            console.log(button ? button.classList.toString() : "mpp-accordion");
-            console.log(content ? content.classList.toString() : "mpp-accordion-content");
+            // console.log(button ? button.classList.toString() : "mpp-accordion");
+            // console.log(content ? content.classList.toString() : "mpp-accordion-content");
             // <span class="mpp-content-cell mpp-accordion-plus">${posts === "" ? "" : button.classList.contains("") ? "-" : "+"}</span>
             insertHTML += `
             <button type="button" class="${button ? button.classList.toString() : "mpp-accordion"} ${posts ? "have-content" : ""}" data-tid="${_tid}">
@@ -1607,8 +1610,9 @@ function createSettingMenu() {
                 <div class="spp-menu-checkbox"><label><input data-funcKey="markPlusPlus" type="checkbox" id="mark-plus-plus">开启MARK++</label></div>
                 <div class="spp-menu-checkbox"><label class="spp-menu-description">- 打开后查看帖子页面右边会出现MARK按钮（可拖到任意位置）</label></div>
                 <div class="spp-menu-checkbox"><label class="spp-menu-description">- 点击MARK之后，当前帖子会加入到“我的MARK”列表里</label></div>
-                <div class="spp-menu-checkbox"><label class="spp-menu-description">- 在论坛左上方可以找到“我的MARK”入口（蓝色），右键点击MARK按钮也可以打开“我的MARK”</label></div>
-                <div class="spp-menu-checkbox"><label class="spp-menu-description">- 保持打开“我的MARK”窗口，脚本会以5秒/帖的频率检查MARK列表</label></div>
+                <div class="spp-menu-checkbox"><label class="spp-menu-description">- 在导航栏可以找到“我的MARK”入口，右键点击MARK按钮也可以打开“我的MARK”</label></div>
+                <div class="spp-menu-checkbox"><label class="spp-menu-description" style="color: brown">- 保持打开“我的MARK”窗口，脚本会以5秒/帖的频率检查MARK列表</label></div>
+                <div class="spp-menu-checkbox"><label class="spp-menu-description" style="color: brown">- 同一时间只允许一个浏览器标签打开“我的MARK”</label></div>
             </div>
             <button type="button" class="spp-accordion spp-accordion-is-open">💠 其它</button>
             <div class="spp-accordion-content spp-accordion-is-open">
