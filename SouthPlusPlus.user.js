@@ -1950,7 +1950,9 @@ function linkToReplyAndQuote(target = document) {
         }
         const reply = ele.querySelector(".h1.fl>.fl");
         if (reply) {
-            const floor = parseInt(reply.firstChild.textContent.match(/回 (\d+)楼/)[1]);
+            const m = reply.firstChild.textContent.match(/回 (\d+)楼/);
+            if(!m) return
+            const floor = parseInt(m[1]);
             const page = Math.ceil(floor / 30);
             const text = reply.innerText.replace(/回 (\d+)楼(.+)/, `回 <a style="color: dodgerblue" href="/read.php?tid=${tid}&page=${page}#SPP-B${floor}F">$1楼</a>$2`);
             reply.innerText = "";
