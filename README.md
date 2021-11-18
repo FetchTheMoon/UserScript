@@ -1,5 +1,9 @@
 # Soul++ 油猴脚本
 
+此脚本不再维护, 请移步插件
+https://github.com/FetchTheMoon/soul-plus-plus-chrome-extension
+
+------------
 
 ## 介绍
 提升你的魂+使用体验
