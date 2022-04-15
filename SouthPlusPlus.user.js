@@ -44,8 +44,8 @@
 // @grant           GM_getResourceText
 // @grant           unsafeWindow
 // --------------------------------------------
-// @require         https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.js
-// @resource        TOASTIFY_CSS https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css
+// @require         https://cdn.jsdelivr.net/npm/toastify-js@1.11.2/src/toastify.min.js
+// @resource        TOASTIFY_CSS https://cdn.jsdelivr.net/npm/toastify-js@1.11.2/src/toastify.css
 // ----------------COPY END---------------------
 // @license         GPL-3.0 License
 // ==/UserScript==
