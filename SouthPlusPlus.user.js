@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name            Soul++
 // @namespace       SoulPlusPlus
-// @version         1.0.1
+// @version         1.0.2
 // @description     提升你的魂+使用体验
 // @run-at          document-start
 // @author          镜花水中捞月
